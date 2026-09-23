@@ -17,6 +17,7 @@ from sam3_annotator.project.project_manager import ProjectManager
 from sam3_annotator.annotation.annotation_manager import AnnotationManager
 from sam3_annotator.annotation.polygon import PolygonAnnotation
 from sam3_annotator.video.frame_cache import FrameCache
+from sam3_annotator.video.video_reader import VideoReader, VideoMetadata
 from sam3_annotator.video.frame_extractor import FrameExtractor, FrameMetadata
 from sam3_annotator.models.sam3_adapter import SAM3AdapterInterface, SAM3LocalAdapter, MockSAM3Adapter
 from sam3_annotator.models.sam3_image_service import SAM3ImageService

@@ -178,3 +178,54 @@ def test_unannotated_frames_exported_as_null_frames():
                 break
         assert frame2_label is not None
         assert frame2_label.stat().st_size == 0  # Empty label file for null frame
+
+
+def test_dynamic_add_videos_flow():
+    """Simulate adding videos dynamically to an existing project (add_videos_dialog logic)."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        vid1 = tmp_path / "initial.mp4"
+        vid2 = tmp_path / "additional.mp4"
+        create_synthetic_video(vid1, num_frames=6)
+        create_synthetic_video(vid2, num_frames=6)
+
+        # Initialize project with vid1
+        r1 = VideoReader(vid1)
+        meta1 = r1.metadata
+        r1.close()
+
+        proj_mgr = ProjectManager()
+        proj_dir = tmp_path / "dynamic_proj"
+        proj_mgr.create_project(
+            project_dir=proj_dir,
+            project_name="DynamicProj",
+            video_metadata=meta1,
+            class_names=["item"],
+        )
+
+        ext1 = FrameExtractor(vid1, proj_mgr.frames_dir, proj_mgr.thumbnails_dir)
+        frames1 = ext1.extract_frames(strategy="every_n", every_n=2, start_frame_id=1, video_name=vid1.name)
+        proj_mgr.set_frames(frames1)
+        proj_mgr.save_project()
+        assert len(proj_mgr.frames) == 3
+
+        # Now simulate add_videos_dialog with vid2
+        r2 = VideoReader(vid2)
+        meta2 = r2.metadata
+        r2.close()
+
+        start_id = len(proj_mgr.frames) + 1
+        ext2 = FrameExtractor(vid2, proj_mgr.frames_dir, proj_mgr.thumbnails_dir)
+        frames2 = ext2.extract_frames(strategy="every_n", every_n=2, start_frame_id=start_id, video_name=vid2.name)
+
+        proj_mgr.frames.extend(frames2)
+        proj_mgr.add_video_metadata([meta2])
+        proj_mgr.save_project()
+
+        assert len(proj_mgr.frames) == 6
+        assert len(proj_mgr.data.videos) == 2
+        assert proj_mgr.data.videos[0]["filename"] == "initial.mp4"
+        assert proj_mgr.data.videos[1]["filename"] == "additional.mp4"
+        assert proj_mgr.frames[3].frame_id == 4
+        assert proj_mgr.frames[3].video_name == "additional.mp4"
+
