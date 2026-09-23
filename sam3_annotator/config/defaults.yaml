@@ -1,0 +1,42 @@
+# Default configuration for SAM3 Video Polygon Annotator
+
+app:
+  name: "SAM3 Video Polygon Annotator"
+  version: "1.0.0"
+
+model:
+  device: "auto"              # "auto", "cuda", "cpu"
+  precision: "fp32"           # "fp32", "fp16", "bf16"
+  checkpoint_path: ""         # Path to local checkpoint (.pt)
+  default_model_type: "sam2.1_t.pt" # Default model weight identifier
+
+frame:
+  default_sampling: "every_n" # "every_n", "every_frame", "fixed_count", "interval_seconds", "frame_range"
+  every_n: 10
+  interval_seconds: 1.0
+  fixed_count: 100
+  cache_size_limit: 100       # Maximum in-memory frames
+  jpeg_quality: 95
+  image_format: "jpg"         # "jpg" or "png"
+
+polygon:
+  simplify_tolerance: 0.005   # Contour approximation tolerance (0.001 - 0.02)
+  min_area: 20.0              # Minimum valid polygon area in pixels
+  morphology_cleanup: true    # Apply morphological opening to eliminate noise
+  remove_duplicate_vertices: true
+
+dataset:
+  train_ratio: 0.7
+  val_ratio: 0.2
+  test_ratio: 0.1
+  split_strategy: "sequential" # "sequential", "grouped", "random"
+  export_masks: true
+  export_previews: true
+  create_zip: true
+
+ui:
+  mask_opacity: 0.45
+  vertex_radius: 5
+  line_width: 2
+  autosave_interval_seconds: 30
+  dark_theme: true

@@ -1,0 +1,17 @@
+{
+  "valid": true,
+  "errors": [],
+  "warnings": [],
+  "stats": {
+    "images_count": 4,
+    "labels_count": 4,
+    "objects_count": 4,
+    "splits": {
+      "train": 3,
+      "val": 1
+    },
+    "classes": {
+      "scooter": 4
+    }
+  }
+}

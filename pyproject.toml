@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sam3-video-polygon-annotator"
+version = "1.0.0"
+description = "Local-first application for interactive SAM 3 assisted polygon annotation on video frames and YOLOv8 instance segmentation export."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Computer Vision Engineering Team" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "PySide6>=6.6.0",
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "ultralytics>=8.1.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0,<3.0.0",
+    "pillow>=10.0.0",
+    "shapely>=2.0.0",
+    "PyYAML>=6.0.0",
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+]
+
+[project.scripts]
+sam3-annotator = "main:main"
+sam3-extract = "sam3_annotator.cli.extract_cli:main"
+sam3-export = "sam3_annotator.cli.export_cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]

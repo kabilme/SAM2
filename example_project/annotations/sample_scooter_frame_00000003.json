@@ -1,0 +1,46 @@
+{
+  "frame_filename": "sample_scooter_frame_00000003.jpg",
+  "objects_count": 1,
+  "objects": [
+    {
+      "object_id": "obj_28de29b4",
+      "class_id": 0,
+      "class_name": "scooter",
+      "frame_id": 3,
+      "source_frame_index": 30,
+      "points": [
+        [
+          264.0,
+          127.0
+        ],
+        [
+          265.0,
+          236.0
+        ],
+        [
+          376.0,
+          235.0
+        ],
+        [
+          375.0,
+          126.0
+        ]
+      ],
+      "bounding_box": [
+        264.0,
+        126.0,
+        376.0,
+        236.0
+      ],
+      "area": 12100.0,
+      "confidence": 0.92,
+      "source": "sam3_track",
+      "tracking_status": "tracked",
+      "modified": true,
+      "visible": true,
+      "locked": false,
+      "created_at": 1790166136.7889946,
+      "updated_at": 1790166136.7890034
+    }
+  ]
+}
