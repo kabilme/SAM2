@@ -24,6 +24,8 @@ class DatasetValidator:
             "stats": {
                 "images_count": 0,
                 "labels_count": 0,
+                "annotated_images_count": 0,
+                "null_images_count": 0,
                 "objects_count": 0,
                 "splits": {},
                 "classes": {},
@@ -103,6 +105,11 @@ class DatasetValidator:
                     with open(lbl_file, "r", encoding="utf-8") as lf:
                         lines = [line.strip() for line in lf if line.strip()]
 
+                    if not lines:
+                        report["stats"]["null_images_count"] += 1
+                    else:
+                        report["stats"]["annotated_images_count"] += 1
+
                     for line_idx, line in enumerate(lines):
                         parts = line.split()
                         if len(parts) < 7:
@@ -173,6 +180,8 @@ class DatasetValidator:
             f.write("=========================\n")
             f.write(f"Status: {'PASSED' if report['valid'] else 'FAILED'}\n")
             f.write(f"Total Images: {report['stats']['images_count']}\n")
+            f.write(f" - Annotated Images: {report['stats']['annotated_images_count']}\n")
+            f.write(f" - Null (Background) Images: {report['stats']['null_images_count']}\n")
             f.write(f"Total Labels: {report['stats']['labels_count']}\n")
             f.write(f"Total Objects: {report['stats']['objects_count']}\n")
             f.write(f"Splits: {report['stats']['splits']}\n")

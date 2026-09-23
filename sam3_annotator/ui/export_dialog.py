@@ -12,16 +12,25 @@ from PySide6.QtWidgets import (
 
 
 class ExportDialog(QDialog):
-    """Dialog configuring YOLOv8 instance segmentation dataset export."""
+    """Dialog configuring YOLOv8 instance segmentation dataset export with null frame support."""
 
-    def __init__(self, default_output_dir: Path, total_frames: int, classes_count: int, parent=None):
+    def __init__(
+        self,
+        default_output_dir: Path,
+        total_frames: int,
+        classes_count: int,
+        annotated_frames_count: int = 0,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Export YOLOv8 Dataset")
-        self.setMinimumSize(480, 460)
+        self.setMinimumSize(520, 500)
 
         self.default_dir = Path(default_output_dir)
         self.total_frames = total_frames
         self.classes_count = classes_count
+        self.annotated_frames_count = annotated_frames_count
+        self.null_frames_count = max(0, total_frames - annotated_frames_count)
 
         self._setup_ui()
 
@@ -73,13 +82,18 @@ class ExportDialog(QDialog):
         layout.addWidget(split_group)
 
         # 3. Export Components Group
-        opts_group = QGroupBox("Export Artifacts")
+        opts_group = QGroupBox("Export Artifacts & Options")
         opts_layout = QVBoxLayout(opts_group)
 
         self.chk_labels = QCheckBox("Export YOLOv8 Polygons & data.yaml")
         self.chk_labels.setChecked(True)
         self.chk_labels.setEnabled(False) # Required
         opts_layout.addWidget(self.chk_labels)
+
+        self.chk_null_frames = QCheckBox("Export unannotated frames as null / negative frames (empty labels)")
+        self.chk_null_frames.setChecked(True)
+        self.chk_null_frames.setToolTip("Generates empty label text files for unannotated frames to teach YOLO background classes")
+        opts_layout.addWidget(self.chk_null_frames)
 
         self.chk_masks = QCheckBox("Export Binary Masks (.png)")
         self.chk_masks.setChecked(True)
@@ -96,8 +110,13 @@ class ExportDialog(QDialog):
         layout.addWidget(opts_group)
 
         # Summary Info
-        summary = QLabel(f"Total Frames: {self.total_frames} | Defined Classes: {self.classes_count}")
-        summary.setStyleSheet("color: #3d5afe; font-weight: bold;")
+        summary = QLabel(
+            f"<b>Total Frames:</b> {self.total_frames}  |  "
+            f"<b>Annotated:</b> {self.annotated_frames_count}  |  "
+            f"<b>Null / Background:</b> {self.null_frames_count}  |  "
+            f"<b>Classes:</b> {self.classes_count}"
+        )
+        summary.setStyleSheet("color: #3d5afe; font-size: 11px;")
         layout.addWidget(summary)
 
         layout.addStretch()
@@ -109,6 +128,7 @@ class ExportDialog(QDialog):
         cancel_btn.setStyleSheet("background-color: #444455;")
         cancel_btn.clicked.connect(self.reject)
         export_btn = QPushButton("Start Export")
+        export_btn.setStyleSheet("font-weight: bold; background-color: #1976d2;")
         export_btn.clicked.connect(self._on_export)
         btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(export_btn)
@@ -134,6 +154,7 @@ class ExportDialog(QDialog):
             "val_ratio": self.val_spin.value() / 100.0,
             "test_ratio": self.test_spin.value() / 100.0,
             "split_strategy": strat_map.get(self.strategy_combo.currentIndex(), "sequential"),
+            "include_null_frames": self.chk_null_frames.isChecked(),
             "export_masks": self.chk_masks.isChecked(),
             "export_previews": self.chk_previews.isChecked(),
             "create_zip": self.chk_zip.isChecked(),

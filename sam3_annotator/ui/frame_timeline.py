@@ -15,6 +15,7 @@ class FrameTimeline(QWidget):
 
     frame_changed = Signal(int)  # frame_id
     keyframe_toggled = Signal(int, bool)  # frame_id, is_keyframe
+    null_frame_clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -89,6 +90,11 @@ class FrameTimeline(QWidget):
         self.keyframe_btn.clicked.connect(self._on_keyframe_clicked)
         ctrl_layout.addWidget(self.keyframe_btn)
 
+        self.null_btn = QPushButton("⚫ Null Frame")
+        self.null_btn.setToolTip("Mark this frame as a Null Frame (Background / No Objects)")
+        self.null_btn.clicked.connect(self.null_frame_clicked.emit)
+        ctrl_layout.addWidget(self.null_btn)
+
         ctrl_layout.addStretch()
 
         self.status_badge = QLabel("Status: Unreviewed")
@@ -135,7 +141,16 @@ class FrameTimeline(QWidget):
         current_meta = self.frames[frame_id - 1]
         self.time_label.setText(self._format_time(current_meta.timestamp_seconds))
         self.keyframe_btn.setChecked(current_meta.is_keyframe)
-        self.status_badge.setText(f"Status: {current_meta.review_status.title()}")
+
+        if current_meta.review_status == "negative":
+            self.status_badge.setText("Status: ⚫ Null Frame (No Objects)")
+            self.status_badge.setStyleSheet("color: #ffb74d; font-weight: bold;")
+        elif current_meta.review_status in ["annotated", "reviewed"]:
+            self.status_badge.setText(f"Status: 🟢 {current_meta.review_status.title()}")
+            self.status_badge.setStyleSheet("color: #66bb6a; font-weight: bold;")
+        else:
+            self.status_badge.setText(f"Status: ⚪ {current_meta.review_status.title()}")
+            self.status_badge.setStyleSheet("color: #aaaaaa; font-weight: bold;")
 
     def step_next(self) -> None:
         if self.current_frame_id < len(self.frames):

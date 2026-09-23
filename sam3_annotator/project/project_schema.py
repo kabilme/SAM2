@@ -31,6 +31,7 @@ class ProjectData:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     video: Optional[Dict[str, Any]] = None
+    videos: List[Dict[str, Any]] = field(default_factory=list)
     classes: List[Dict[str, Any]] = field(default_factory=list)
     frames: List[Dict[str, Any]] = field(default_factory=list)
     settings: Dict[str, Any] = field(default_factory=dict)
@@ -41,13 +42,18 @@ class ProjectData:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ProjectData":
+        videos = data.get("videos", [])
+        video = data.get("video")
+        if not videos and video:
+            videos = [video]
         return cls(
             schema_version=data.get("schema_version", 1),
             application_version=data.get("application_version", "1.0.0"),
             project_name=data.get("project_name", "Untitled Project"),
             created_at=data.get("created_at", time.time()),
             updated_at=data.get("updated_at", time.time()),
-            video=data.get("video"),
+            video=video,
+            videos=videos,
             classes=data.get("classes", []),
             frames=data.get("frames", []),
             settings=data.get("settings", {}),

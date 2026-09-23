@@ -24,13 +24,25 @@ class FrameMetadata:
     thumbnail_filename: str = ""
     review_status: str = "unreviewed" # "unreviewed", "annotated", "reviewed", "negative", "rejected"
     is_keyframe: bool = False
+    video_name: str = ""             # Source video filename
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "FrameMetadata":
-        return cls(**data)
+        return cls(
+            frame_id=data["frame_id"],
+            source_frame_index=data["source_frame_index"],
+            timestamp_seconds=data["timestamp_seconds"],
+            filename=data["filename"],
+            width=data["width"],
+            height=data["height"],
+            thumbnail_filename=data.get("thumbnail_filename", ""),
+            review_status=data.get("review_status", "unreviewed"),
+            is_keyframe=data.get("is_keyframe", False),
+            video_name=data.get("video_name", ""),
+        )
 
 
 def sanitize_filename_stem(name: str) -> str:
@@ -103,6 +115,8 @@ class FrameExtractor:
         start_frame: int = 0,
         end_frame: Optional[int] = None,
         jpeg_quality: int = 95,
+        start_frame_id: int = 1,
+        video_name: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         is_cancelled: Optional[Callable[[], bool]] = None,
     ) -> List[FrameMetadata]:
@@ -125,6 +139,7 @@ class FrameExtractor:
         )
 
         stem = sanitize_filename_stem(self.video_path.name)
+        v_name = video_name or self.video_path.name
         extracted: List[FrameMetadata] = []
         total_targets = len(target_indices)
 
@@ -141,7 +156,7 @@ class FrameExtractor:
                 if frame is None:
                     continue
 
-                frame_id = idx + 1
+                frame_id = start_frame_id + idx
                 frame_filename = f"{stem}_frame_{frame_id:08d}.jpg"
                 thumb_filename = f"{stem}_thumb_{frame_id:08d}.jpg"
 
@@ -165,12 +180,13 @@ class FrameExtractor:
                     height=frame.shape[0],
                     thumbnail_filename=thumb_filename,
                     review_status="unreviewed",
+                    video_name=v_name,
                 )
                 extracted.append(frame_meta)
 
                 if progress_callback:
                     progress_callback(
-                        frame_id,
+                        idx + 1,
                         total_targets,
                         f"Extracted frame {frame_id}/{total_targets} (source #{source_idx})",
                     )

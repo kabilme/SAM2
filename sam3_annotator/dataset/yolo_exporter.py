@@ -39,6 +39,7 @@ class YOLOExporter:
         export_masks: bool = True,
         export_previews: bool = True,
         create_zip: bool = True,
+        include_null_frames: bool = True,
         zip_name: str = "dataset.zip",
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         is_cancelled: Optional[Callable[[], bool]] = None,
@@ -53,11 +54,14 @@ class YOLOExporter:
         total_frames = sum(len(f_list) for f_list in split_dict.values())
         processed_count = 0
         total_objects_exported = 0
+        null_frames_exported = 0
+        annotated_frames_exported = 0
         split_counts: Dict[str, int] = {}
         class_counts: Dict[str, int] = {c.name: 0 for c in self.classes}
         warnings: List[str] = []
 
-        logger.info("Beginning YOLOv8 segmentation export to %s", self.output_dir)
+        logger.info("Beginning YOLOv8 segmentation export to %s (include_null_frames=%s)",
+                    self.output_dir, include_null_frames)
 
         for split_name, frame_list in split_dict.items():
             if not frame_list:
@@ -89,11 +93,22 @@ class YOLOExporter:
                 label_filename = f"{Path(frame.filename).stem}.txt"
                 dest_lbl_path = split_lbl_dir / label_filename
 
+                # Get annotations for this frame
+                annos = annotations_by_frame.get(frame.frame_id, [])
+                is_null_frame = (len(annos) == 0)
+
+                # If unannotated and user requested excluding null frames
+                if is_null_frame and not include_null_frames:
+                    continue
+
+                if is_null_frame:
+                    null_frames_exported += 1
+                else:
+                    annotated_frames_exported += 1
+
                 # Copy image
                 shutil.copy2(src_image_path, dest_img_path)
 
-                # Get annotations for this frame
-                annos = annotations_by_frame.get(frame.frame_id, [])
                 label_lines = []
 
                 img_bgr = None
@@ -104,6 +119,19 @@ class YOLOExporter:
                 combined_mask = np.zeros((frame.height, frame.width), dtype=np.uint8) if export_masks else None
 
                 transformer = CoordinateTransformer(frame.width, frame.height)
+
+                if is_null_frame and preview_img is not None:
+                    # Subtle indicator on preview for background / null frames
+                    cv2.putText(
+                        preview_img,
+                        "NULL / BACKGROUND",
+                        (15, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (160, 160, 160),
+                        2,
+                        cv2.LINE_AA,
+                    )
 
                 for anno in annos:
                     # Validate polygon
@@ -189,6 +217,8 @@ class YOLOExporter:
             "generated_at": time.time(),
             "classes": [c.to_dict() for c in self.classes],
             "total_images": processed_count,
+            "annotated_images": annotated_frames_exported,
+            "null_images": null_frames_exported,
             "total_objects": total_objects_exported,
             "split_counts": split_counts,
             "class_counts": class_counts,
@@ -202,6 +232,8 @@ class YOLOExporter:
         with open(readme_path, "w", encoding="utf-8") as f:
             f.write(f"# YOLOv8 Instance Segmentation Dataset\n\n")
             f.write(f"- Total Images: {processed_count}\n")
+            f.write(f"- Annotated Images (with objects): {annotated_frames_exported}\n")
+            f.write(f"- Null / Background Images (0 objects): {null_frames_exported}\n")
             f.write(f"- Total Objects: {total_objects_exported}\n")
             f.write(f"- Splits: {split_counts}\n")
             f.write(f"- Classes: {class_counts}\n\n")
@@ -221,6 +253,8 @@ class YOLOExporter:
             "status": "success",
             "output_dir": str(self.output_dir),
             "total_images": processed_count,
+            "annotated_images": annotated_frames_exported,
+            "null_images": null_frames_exported,
             "total_objects": total_objects_exported,
             "split_counts": split_counts,
             "class_counts": class_counts,

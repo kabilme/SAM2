@@ -59,7 +59,7 @@ class ProjectManager:
         self,
         project_dir: Path,
         project_name: str,
-        video_metadata: VideoMetadata,
+        video_metadata: Any,
         class_names: List[str],
         settings: Optional[Dict[str, Any]] = None,
     ) -> bool:
@@ -77,9 +77,20 @@ class ProjectManager:
             color = list(get_deterministic_color(i))
             self.classes.append(ClassItem(id=i, name=name.strip(), color_rgb=color))
 
+        if isinstance(video_metadata, list):
+            videos_list = [v.to_dict() if hasattr(v, "to_dict") else v for v in video_metadata]
+            primary_video = videos_list[0] if videos_list else None
+        elif hasattr(video_metadata, "to_dict"):
+            primary_video = video_metadata.to_dict()
+            videos_list = [primary_video]
+        else:
+            primary_video = video_metadata
+            videos_list = [video_metadata] if video_metadata else []
+
         self.data = ProjectData(
             project_name=project_name,
-            video=video_metadata.to_dict(),
+            video=primary_video,
+            videos=videos_list,
             classes=[c.to_dict() for c in self.classes],
             frames=[],
             settings=settings or {},
@@ -87,6 +98,19 @@ class ProjectManager:
         self.frames = []
         self.is_dirty = True
         return self.save_project()
+
+    def add_video_metadata(self, new_videos: Any) -> None:
+        """Add metadata for one or more additional videos to the project."""
+        if not isinstance(new_videos, list):
+            new_videos = [new_videos]
+        existing_vids = list(self.data.videos or [])
+        for v in new_videos:
+            v_dict = v.to_dict() if hasattr(v, "to_dict") else v
+            existing_vids.append(v_dict)
+        self.data.videos = existing_vids
+        if not self.data.video and existing_vids:
+            self.data.video = existing_vids[0]
+        self.is_dirty = True
 
     def save_project(self, annotation_manager: Optional[AnnotationManager] = None) -> bool:
         """Atomically persist project.json with a backup file."""

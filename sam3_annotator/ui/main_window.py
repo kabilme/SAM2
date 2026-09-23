@@ -48,10 +48,20 @@ class FrameExtractionWorker(QThread):
     finished = Signal(list)
     error = Signal(str)
 
-    def __init__(self, extractor: FrameExtractor, params: Dict[str, Any]):
+    def __init__(
+        self,
+        video_paths: List[Path],
+        frames_dir: Path,
+        thumbnails_dir: Path,
+        params: Dict[str, Any],
+        start_frame_id: int = 1,
+    ):
         super().__init__()
-        self.extractor = extractor
+        self.video_paths = [Path(p) for p in video_paths]
+        self.frames_dir = Path(frames_dir)
+        self.thumbnails_dir = Path(thumbnails_dir)
         self.params = params
+        self.start_frame_id = start_frame_id
         self._cancelled = False
 
     def cancel(self):
@@ -59,15 +69,34 @@ class FrameExtractionWorker(QThread):
 
     def run(self):
         try:
-            frames = self.extractor.extract_frames(
-                strategy=self.params.get("sampling_strategy", "every_n"),
-                every_n=self.params.get("every_n", 10),
-                interval_seconds=self.params.get("interval_seconds", 1.0),
-                fixed_count=self.params.get("fixed_count", 100),
-                progress_callback=lambda cur, tot, msg: self.progress.emit(cur, tot, msg),
-                is_cancelled=lambda: self._cancelled,
-            )
-            self.finished.emit(frames)
+            all_frames: List[FrameMetadata] = []
+            curr_id = self.start_frame_id
+            total_videos = len(self.video_paths)
+
+            for v_idx, v_path in enumerate(self.video_paths):
+                if self._cancelled:
+                    break
+
+                extractor = FrameExtractor(v_path, self.frames_dir, self.thumbnails_dir)
+
+                def prog_cb(cur, tot, msg, v_i=v_idx, vp=v_path):
+                    prefix = f"[Video {v_i + 1}/{total_videos}: {vp.name}] "
+                    self.progress.emit(cur, tot, prefix + msg)
+
+                v_frames = extractor.extract_frames(
+                    strategy=self.params.get("sampling_strategy", "every_n"),
+                    every_n=self.params.get("every_n", 10),
+                    interval_seconds=self.params.get("interval_seconds", 1.0),
+                    fixed_count=self.params.get("fixed_count", 100),
+                    start_frame_id=curr_id,
+                    video_name=v_path.name,
+                    progress_callback=prog_cb,
+                    is_cancelled=lambda: self._cancelled,
+                )
+                all_frames.extend(v_frames)
+                curr_id += len(v_frames)
+
+            self.finished.emit(all_frames)
         except Exception as e:
             logger.error("Frame extraction worker failed: %s", e)
             self.error.emit(str(e))
@@ -220,6 +249,7 @@ class MainWindow(QMainWindow):
         self.video_panel.frame_selected.connect(self._on_frame_selected)
         self.timeline.frame_changed.connect(self._on_frame_selected)
         self.timeline.keyframe_toggled.connect(self._on_keyframe_toggled)
+        self.timeline.null_frame_clicked.connect(self._mark_frame_negative)
 
         self.class_panel.class_selected.connect(self._on_class_selected)
         self.class_panel.classes_modified.connect(self._on_classes_modified)
@@ -253,6 +283,10 @@ class MainWindow(QMainWindow):
         save_proj_act.setShortcut(QKeySequence("Ctrl+S"))
         save_proj_act.triggered.connect(self.save_project)
 
+        add_vid_act = file_menu.addAction("&Add Video(s) to Project...")
+        add_vid_act.setShortcut(QKeySequence("Ctrl+Shift+V"))
+        add_vid_act.triggered.connect(self.add_videos_dialog)
+
         file_menu.addSeparator()
         exit_act = file_menu.addAction("E&xit")
         exit_act.setShortcut(QKeySequence("Ctrl+Q"))
@@ -282,8 +316,12 @@ class MainWindow(QMainWindow):
         mark_rev_act.setShortcut(QKeySequence("R"))
         mark_rev_act.triggered.connect(self._mark_frame_reviewed)
 
-        mark_neg_act = anno_menu.addAction("Mark Frame &Negative (No Objects)")
+        mark_neg_act = anno_menu.addAction("Mark Frame as &Null Frame (No Objects)")
+        mark_neg_act.setShortcut(QKeySequence("N"))
         mark_neg_act.triggered.connect(self._mark_frame_negative)
+
+        mark_all_null_act = anno_menu.addAction("Mark All Unannotated as Null &Frames")
+        mark_all_null_act.triggered.connect(self._mark_all_unannotated_as_null)
 
         # Dataset Menu
         data_menu = mb.addMenu("&Dataset")
@@ -360,14 +398,14 @@ class MainWindow(QMainWindow):
         diag = ProjectDialog(self)
         if diag.exec():
             params = diag.get_project_params()
-            self._create_project(params, diag.video_metadata)
+            self._create_project(params, params.get("video_metadatas", [params.get("video_metadata")]))
 
-    def _create_project(self, params: Dict[str, Any], video_metadata: Any) -> None:
+    def _create_project(self, params: Dict[str, Any], video_metadatas: Any) -> None:
         p_dir = params["project_dir"]
         self.project_manager.create_project(
             project_dir=p_dir,
             project_name=params["name"],
-            video_metadata=video_metadata,
+            video_metadata=video_metadatas,
             class_names=params["classes"],
             settings={"sampling": params["sampling_strategy"]},
         )
@@ -377,15 +415,16 @@ class MainWindow(QMainWindow):
         self.video_panel.frame_cache = self.frame_cache
         self.video_service.frame_cache = self.frame_cache
 
-        # Start frame extraction in background worker
-        extractor = FrameExtractor(
-            video_path=params["video_path"],
-            output_dir=self.project_manager.frames_dir,
-            thumbnails_dir=self.project_manager.thumbnails_dir,
-        )
-
+        # Start multi-video frame extraction in background worker
+        video_paths = params.get("video_paths", [params.get("video_path")])
         prog_diag = ProgressDialog("Extracting Video Frames...", self)
-        worker = FrameExtractionWorker(extractor, params)
+        worker = FrameExtractionWorker(
+            video_paths=video_paths,
+            frames_dir=self.project_manager.frames_dir,
+            thumbnails_dir=self.project_manager.thumbnails_dir,
+            params=params,
+            start_frame_id=1,
+        )
         self.current_worker = worker
 
         worker.progress.connect(prog_diag.set_progress)
@@ -399,11 +438,90 @@ class MainWindow(QMainWindow):
             self.timeline.set_frames(frames)
             self.status_project_label.setText(f"Project: {params['name']}")
             self._on_frame_selected(1)
-            QMessageBox.information(self, "Success", f"Extracted {len(frames)} frames successfully!")
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Extracted {len(frames)} frames from {len(video_paths)} video(s) successfully!"
+            )
 
         def on_error(err_msg: str):
             prog_diag.reject()
             QMessageBox.critical(self, "Extraction Error", f"Failed to extract frames: {err_msg}")
+
+        worker.finished.connect(on_finished)
+        worker.error.connect(on_error)
+        worker.start()
+        prog_diag.exec()
+
+    def add_videos_dialog(self) -> None:
+        """Add one or more additional video files to the currently open project."""
+        if not self.project_manager.project_dir:
+            QMessageBox.warning(self, "No Project Open", "Please open or create a project before adding videos.")
+            return
+
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select Video File(s) to Add to Project",
+            "",
+            "Videos (*.mp4 *.avi *.mov *.mkv *.webm);;All Files (*.*)"
+        )
+        if not paths:
+            return
+
+        video_paths = [Path(p) for p in paths]
+        new_metadatas = []
+        for vp in video_paths:
+            try:
+                reader = VideoReader(vp)
+                if reader.metadata:
+                    new_metadatas.append(reader.metadata)
+                reader.close()
+            except Exception as e:
+                logger.error("Could not read video metadata for %s: %s", vp, e)
+
+        if not new_metadatas:
+            QMessageBox.critical(self, "Error", "None of the selected video files could be read.")
+            return
+
+        start_id = len(self.project_manager.frames) + 1
+        sampling_strategy = self.project_manager.data.settings.get("sampling", "every_n")
+        params = {
+            "sampling_strategy": sampling_strategy,
+            "every_n": self.config.frame.extraction_fps_step or 10,
+            "interval_seconds": 1.0,
+            "fixed_count": 100,
+        }
+
+        prog_diag = ProgressDialog("Adding Videos & Extracting Frames...", self)
+        worker = FrameExtractionWorker(
+            video_paths=video_paths,
+            frames_dir=self.project_manager.frames_dir,
+            thumbnails_dir=self.project_manager.thumbnails_dir,
+            params=params,
+            start_frame_id=start_id,
+        )
+        self.current_worker = worker
+
+        worker.progress.connect(prog_diag.set_progress)
+        prog_diag.cancelled.connect(worker.cancel)
+
+        def on_finished(new_frames: List[FrameMetadata]):
+            prog_diag.accept()
+            self.project_manager.frames.extend(new_frames)
+            self.project_manager.add_video_metadata(new_metadatas)
+            self.project_manager.save_project()
+            self.video_panel.set_frames(self.project_manager.frames)
+            self.timeline.set_frames(self.project_manager.frames)
+            QMessageBox.information(
+                self,
+                "Videos Added",
+                f"Successfully extracted and added {len(new_frames)} frames from {len(video_paths)} video(s)!\n"
+                f"Project now contains {len(self.project_manager.frames)} total frames."
+            )
+
+        def on_error(err_msg: str):
+            prog_diag.reject()
+            QMessageBox.critical(self, "Extraction Error", f"Failed to add video frames: {err_msg}")
 
         worker.finished.connect(on_finished)
         worker.error.connect(on_error)
@@ -455,7 +573,10 @@ class MainWindow(QMainWindow):
         self.properties_panel.set_annotations(annos)
 
         self.status_frame_label.setText(f"Frame: {frame_id} / {len(self.project_manager.frames)}")
-        self.status_objects_label.setText(f"Objects: {len(annos)}")
+        if len(annos) == 0:
+            self.status_objects_label.setText("Objects: 0 (Null Frame)")
+        else:
+            self.status_objects_label.setText(f"Objects: {len(annos)}")
 
     def _on_class_selected(self, class_id: int, class_name: str) -> None:
         self.annotation_manager.active_class_id = class_id
@@ -474,7 +595,17 @@ class MainWindow(QMainWindow):
         annos = self.annotation_manager.get_annotations_for_frame(fid)
         self.canvas.set_annotations(annos, self.annotation_manager.selected_object_id)
         self.properties_panel.set_annotations(annos, self.annotation_manager.selected_object_id)
-        self.status_objects_label.setText(f"Objects: {len(annos)}")
+        if len(annos) == 0:
+            self.status_objects_label.setText("Objects: 0 (Null Frame)")
+            if 0 < fid <= len(self.project_manager.frames):
+                self.project_manager.frames[fid - 1].review_status = "negative"
+        else:
+            self.status_objects_label.setText(f"Objects: {len(annos)}")
+            if 0 < fid <= len(self.project_manager.frames):
+                if self.project_manager.frames[fid - 1].review_status == "negative":
+                    self.project_manager.frames[fid - 1].review_status = "annotated"
+        self.video_panel.apply_filter()
+        self.timeline.set_current_frame(fid)
         self.status_save_label.setText("Modified*")
         self.project_manager.is_dirty = True
 
@@ -666,6 +797,25 @@ class MainWindow(QMainWindow):
         fid = self.annotation_manager.active_frame_id
         self.annotation_manager.clear_frame_annotations(fid)
         self._mark_frame_status(fid, "negative")
+        self.status_objects_label.setText("Objects: 0 (Null Frame)")
+
+    def _mark_all_unannotated_as_null(self) -> None:
+        """Scan all frames; if a frame has 0 annotations, mark its status as negative (null frame)."""
+        marked_count = 0
+        for frame in self.project_manager.frames:
+            annos = self.annotation_manager.get_annotations_for_frame(frame.frame_id)
+            if len(annos) == 0:
+                frame.review_status = "negative"
+                marked_count += 1
+        self.video_panel.apply_filter()
+        self.timeline.set_current_frame(self.annotation_manager.active_frame_id)
+        self.project_manager.is_dirty = True
+        self.status_save_label.setText("Modified*")
+        QMessageBox.information(
+            self,
+            "Null Frames",
+            f"Marked {marked_count} unannotated frames as Null (negative background) frames."
+        )
 
     def _mark_frame_status(self, frame_id: int, status: str) -> None:
         if 0 < frame_id <= len(self.project_manager.frames):
@@ -682,7 +832,17 @@ class MainWindow(QMainWindow):
             return
 
         def_out = self.project_manager.export_dir
-        diag = ExportDialog(def_out, len(self.project_manager.frames), len(self.project_manager.classes), self)
+        annotated_count = sum(
+            1 for f in self.project_manager.frames
+            if len(self.annotation_manager.get_annotations_for_frame(f.frame_id)) > 0
+        )
+        diag = ExportDialog(
+            default_output_dir=def_out,
+            total_frames=len(self.project_manager.frames),
+            classes_count=len(self.project_manager.classes),
+            annotated_frames_count=annotated_count,
+            parent=self,
+        )
         if diag.exec():
             params = diag.get_export_params()
             split_dict = DatasetSplitter.split_frames(
@@ -711,6 +871,7 @@ class MainWindow(QMainWindow):
                 export_masks=params["export_masks"],
                 export_previews=params["export_previews"],
                 create_zip=params["create_zip"],
+                include_null_frames=params.get("include_null_frames", True),
                 progress_callback=print_prog,
                 is_cancelled=prog.is_cancelled,
             )
@@ -722,8 +883,10 @@ class MainWindow(QMainWindow):
 
             msg = (
                 f"Dataset successfully exported to:\n{params['output_dir']}\n\n"
-                f"Images: {report['stats']['images_count']}\n"
-                f"Objects: {report['stats']['objects_count']}\n"
+                f"Total Images: {report['stats']['images_count']}\n"
+                f" - Annotated Images: {report['stats']['annotated_images_count']}\n"
+                f" - Null / Background Images: {report['stats']['null_images_count']}\n"
+                f"Total Objects: {report['stats']['objects_count']}\n\n"
                 f"Validation Status: {'PASSED' if report['valid'] else 'WARNINGS FOUND'}"
             )
             QMessageBox.information(self, "Export Complete", msg)

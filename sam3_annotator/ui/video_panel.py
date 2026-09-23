@@ -36,7 +36,13 @@ class VideoPanel(QWidget):
         # Header with filter
         top_layout = QHBoxLayout()
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["All Frames", "Annotated Only", "Reviewed Only", "Unreviewed Only"])
+        self.filter_combo.addItems([
+            "All Frames",
+            "Annotated Only",
+            "Null / Negative Frames Only",
+            "Reviewed Only",
+            "Unreviewed Only"
+        ])
         self.filter_combo.currentIndexChanged.connect(self.apply_filter)
         top_layout.addWidget(QLabel("Filter:"))
         top_layout.addWidget(self.filter_combo)
@@ -70,6 +76,8 @@ class VideoPanel(QWidget):
         for frame in self.frames:
             if filter_mode == "Annotated Only" and frame.review_status not in ["annotated", "reviewed"]:
                 continue
+            elif filter_mode == "Null / Negative Frames Only" and frame.review_status != "negative":
+                continue
             elif filter_mode == "Reviewed Only" and frame.review_status != "reviewed":
                 continue
             elif filter_mode == "Unreviewed Only" and frame.review_status != "unreviewed":
@@ -85,8 +93,15 @@ class VideoPanel(QWidget):
                 "rejected": "🔴",
             }.get(frame.review_status, "")
 
-            item.setText(f"{status_symbol} #{frame.frame_id} ({frame.timestamp_seconds:.2f}s)")
+            if frame.review_status == "negative":
+                item_label = f"⚫ [Null] #{frame.frame_id} ({frame.timestamp_seconds:.2f}s)"
+            else:
+                item_label = f"{status_symbol} #{frame.frame_id} ({frame.timestamp_seconds:.2f}s)"
+
+            item.setText(item_label)
             item.setData(Qt.UserRole, frame.frame_id)
+            tip_v = f"Video: {frame.video_name} | " if frame.video_name else ""
+            item.setToolTip(f"{tip_v}Frame #{frame.frame_id} (Source #{frame.source_frame_index}) | Status: {frame.review_status}")
 
             # Load thumbnail icon
             thumb_bgr = self.frame_cache.get_thumbnail(frame.thumbnail_filename)

@@ -1,4 +1,4 @@
-"""Project creation wizard dialog."""
+"""Project creation wizard dialog supporting single and multi-video uploads."""
 
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -16,14 +16,14 @@ from sam3_annotator.utils.logging_utils import logger
 
 
 class ProjectDialog(QDialog):
-    """Wizard for creating a new video annotation project."""
+    """Wizard for creating a new video annotation project with multi-video support."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("New Annotation Project")
-        self.setMinimumSize(560, 520)
+        self.setMinimumSize(620, 600)
 
-        self.video_metadata: Optional[VideoMetadata] = None
+        self.video_items: List[Dict[str, Any]] = []  # List of {"path": Path, "metadata": VideoMetadata}
 
         self._setup_ui()
 
@@ -31,20 +31,11 @@ class ProjectDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        # 1. Video & Path Form
+        # 1. Project Info Form
         form = QFormLayout()
         self.name_edit = QLineEdit("MyVideoProject")
+        self.name_edit.textChanged.connect(self._on_name_changed)
         form.addRow("<b>Project Name:</b>", self.name_edit)
-
-        # Video File Picker
-        vid_layout = QHBoxLayout()
-        self.video_path_edit = QLineEdit()
-        self.video_path_edit.setPlaceholderText("Select video (.mp4, .avi, .mov, .mkv)...")
-        vid_browse = QPushButton("Browse...")
-        vid_browse.clicked.connect(self._browse_video)
-        vid_layout.addWidget(self.video_path_edit)
-        vid_layout.addWidget(vid_browse)
-        form.addRow("<b>Video File:</b>", vid_layout)
 
         # Project Location Picker
         dir_layout = QHBoxLayout()
@@ -57,17 +48,43 @@ class ProjectDialog(QDialog):
 
         layout.addLayout(form)
 
-        # Video Info preview
-        self.video_info_label = QLabel("No video selected.")
-        self.video_info_label.setStyleSheet("color: #3d5afe; font-size: 11px;")
-        layout.addWidget(self.video_info_label)
+        # 2. Video Sources Group (Multi-Video Support)
+        video_group = QGroupBox("Video Sources (Select one or more videos)")
+        v_layout = QVBoxLayout(video_group)
 
-        # 2. Frame Sampling Group
+        self.video_list = QListWidget()
+        self.video_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.video_list.setMinimumHeight(100)
+        v_layout.addWidget(self.video_list)
+
+        btn_v_layout = QHBoxLayout()
+        add_v_btn = QPushButton("+ Add Video(s)...")
+        add_v_btn.setStyleSheet("font-weight: bold; background-color: #2e7d32;")
+        add_v_btn.clicked.connect(self._browse_videos)
+        remove_v_btn = QPushButton("Remove Selected")
+        remove_v_btn.clicked.connect(self._remove_video)
+        clear_v_btn = QPushButton("Clear All")
+        clear_v_btn.clicked.connect(self._clear_videos)
+
+        btn_v_layout.addWidget(add_v_btn)
+        btn_v_layout.addWidget(remove_v_btn)
+        btn_v_layout.addWidget(clear_v_btn)
+        btn_v_layout.addStretch()
+        v_layout.addLayout(btn_v_layout)
+
+        # Video Info summary preview
+        self.video_info_label = QLabel("No videos selected. Click '+ Add Video(s)...' to choose video files.")
+        self.video_info_label.setStyleSheet("color: #3d5afe; font-size: 11px;")
+        v_layout.addWidget(self.video_info_label)
+
+        layout.addWidget(video_group)
+
+        # 3. Frame Sampling Group
         sampling_group = QGroupBox("Frame Extraction Sampling")
         sample_layout = QFormLayout(sampling_group)
 
         self.sampling_combo = QComboBox()
-        self.sampling_combo.addItems(["Every Nth Frame", "Fixed Count", "Time Interval (seconds)", "Every Frame"])
+        self.sampling_combo.addItems(["Every Nth Frame", "Fixed Count per Video", "Time Interval (seconds)", "Every Frame"])
         self.sampling_combo.currentIndexChanged.connect(self._on_sampling_changed)
         sample_layout.addRow("Sampling Method:", self.sampling_combo)
 
@@ -80,7 +97,7 @@ class ProjectDialog(QDialog):
         self.fixed_count_spin.setRange(1, 10000)
         self.fixed_count_spin.setValue(100)
         self.fixed_count_spin.setEnabled(False)
-        sample_layout.addRow("Fixed Count:", self.fixed_count_spin)
+        sample_layout.addRow("Fixed Count per Video:", self.fixed_count_spin)
 
         self.interval_sec_spin = QDoubleSpinBox()
         self.interval_sec_spin.setRange(0.1, 60.0)
@@ -90,7 +107,7 @@ class ProjectDialog(QDialog):
 
         layout.addWidget(sampling_group)
 
-        # 3. Classes Group
+        # 4. Classes Group
         classes_group = QGroupBox("Dataset Classes")
         class_layout = QVBoxLayout(classes_group)
 
@@ -121,33 +138,87 @@ class ProjectDialog(QDialog):
         cancel_btn.setStyleSheet("background-color: #444455;")
         cancel_btn.clicked.connect(self.reject)
         create_btn = QPushButton("Create Project & Extract Frames")
+        create_btn.setStyleSheet("font-weight: bold; background-color: #1976d2;")
         create_btn.clicked.connect(self._on_create)
         btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(create_btn)
         layout.addLayout(btn_layout)
 
-    def _browse_video(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Video File", "", "Videos (*.mp4 *.avi *.mov *.mkv *.webm);;All Files (*.*)"
+    def _browse_videos(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select Video File(s)",
+            "",
+            "Videos (*.mp4 *.avi *.mov *.mkv *.webm);;All Files (*.*)"
         )
-        if path:
-            self.video_path_edit.setText(path)
-            try:
-                reader = VideoReader(Path(path))
-                meta = reader.metadata
-                if meta:
-                    self.video_metadata = meta
-                    self.video_info_label.setText(
-                        f"Video: {meta.filename} | Resolution: {meta.width}x{meta.height} | "
-                        f"FPS: {meta.fps} | Frames: {meta.total_frames:,} | Duration: {meta.formatted_duration}"
-                    )
-                    # Auto update project dir name if default
-                    v_stem = Path(path).stem
+        if paths:
+            for p in paths:
+                self._add_video_file(Path(p))
+            self._update_video_summary()
+
+    def _add_video_file(self, path: Path) -> None:
+        # Check duplicate
+        for item in self.video_items:
+            if item["path"].resolve() == path.resolve():
+                return
+
+        try:
+            reader = VideoReader(path)
+            meta = reader.metadata
+            reader.close()
+            if meta:
+                self.video_items.append({"path": path, "metadata": meta})
+                item_text = (
+                    f"🎬 {path.name}  |  {meta.width}x{meta.height}  |  "
+                    f"{meta.fps:.2f} fps  |  {meta.total_frames:,} frames  |  {meta.formatted_duration}"
+                )
+                list_item = QListWidgetItem(item_text)
+                list_item.setToolTip(str(path))
+                list_item.setData(Qt.UserRole, str(path))
+                self.video_list.addItem(list_item)
+
+                # If first video, auto-populate project name
+                if len(self.video_items) == 1:
+                    v_stem = path.stem
                     self.name_edit.setText(v_stem)
                     self.dir_path_edit.setText(str(Path.cwd() / "projects" / v_stem))
-                reader.close()
-            except Exception as e:
-                QMessageBox.critical(self, "Video Error", f"Could not read video: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Video Error", f"Could not read video '{path.name}': {e}")
+
+    def _remove_video(self) -> None:
+        selected = self.video_list.selectedItems()
+        for it in selected:
+            p_str = it.data(Qt.UserRole)
+            self.video_items = [v for v in self.video_items if str(v["path"]) != p_str]
+            row = self.video_list.row(it)
+            self.video_list.takeItem(row)
+        self._update_video_summary()
+
+    def _clear_videos(self) -> None:
+        self.video_items.clear()
+        self.video_list.clear()
+        self._update_video_summary()
+
+    def _update_video_summary(self) -> None:
+        if not self.video_items:
+            self.video_info_label.setText("No videos selected. Click '+ Add Video(s)...' to choose video files.")
+            return
+
+        total_frames = sum(v["metadata"].total_frames for v in self.video_items)
+        total_seconds = sum(v["metadata"].duration_seconds for v in self.video_items)
+        m = int(total_seconds // 60)
+        s = int(total_seconds % 60)
+        duration_str = f"{m:02d}:{s:02d}"
+
+        self.video_info_label.setText(
+            f"<b>Selected Videos:</b> {len(self.video_items)}  |  "
+            f"<b>Combined Frames:</b> {total_frames:,}  |  "
+            f"<b>Total Duration:</b> {duration_str}"
+        )
+
+    def _on_name_changed(self, text: str) -> None:
+        clean_name = text.strip() or "MyVideoProject"
+        self.dir_path_edit.setText(str(Path.cwd() / "projects" / clean_name))
 
     def _browse_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Select Project Output Folder")
@@ -171,9 +242,8 @@ class ProjectDialog(QDialog):
             self.classes_list.takeItem(row)
 
     def _on_create(self) -> None:
-        v_path = self.video_path_edit.text().strip()
-        if not v_path or not Path(v_path).exists():
-            QMessageBox.warning(self, "Validation Error", "Please select a valid video file.")
+        if not self.video_items:
+            QMessageBox.warning(self, "Validation Error", "Please add at least one video file.")
             return
 
         p_name = self.name_edit.text().strip()
@@ -194,10 +264,15 @@ class ProjectDialog(QDialog):
         strategy = strat_map.get(sampling_idx, "every_n")
 
         classes = [self.classes_list.item(i).text() for i in range(self.classes_list.count())]
+        video_paths = [v["path"] for v in self.video_items]
+        video_metadatas = [v["metadata"] for v in self.video_items]
 
         return {
             "name": self.name_edit.text().strip(),
-            "video_path": Path(self.video_path_edit.text().strip()),
+            "video_paths": video_paths,
+            "video_path": video_paths[0] if video_paths else None,
+            "video_metadatas": video_metadatas,
+            "video_metadata": video_metadatas[0] if video_metadatas else None,
             "project_dir": Path(self.dir_path_edit.text().strip()),
             "classes": classes,
             "sampling_strategy": strategy,
