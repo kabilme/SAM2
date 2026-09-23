@@ -408,7 +408,12 @@ class MainWindow(QMainWindow):
             project_name=params["name"],
             video_metadata=video_metadatas,
             class_names=params["classes"],
-            settings={"sampling": params["sampling_strategy"]},
+            settings={
+                "sampling": params.get("sampling_strategy", "every_n"),
+                "every_n": params.get("every_n", 10),
+                "interval_seconds": params.get("interval_seconds", 1.0),
+                "fixed_count": params.get("fixed_count", 100),
+            },
         )
         self.class_panel.set_classes(self.project_manager.classes)
         self.properties_panel.set_classes(self.project_manager.classes)
@@ -488,9 +493,9 @@ class MainWindow(QMainWindow):
         sampling_strategy = self.project_manager.data.settings.get("sampling", "every_n")
         params = {
             "sampling_strategy": sampling_strategy,
-            "every_n": self.config.frame.extraction_fps_step or 10,
-            "interval_seconds": 1.0,
-            "fixed_count": 100,
+            "every_n": self.project_manager.data.settings.get("every_n", getattr(self.config.frame, "every_n", 10)),
+            "interval_seconds": self.project_manager.data.settings.get("interval_seconds", getattr(self.config.frame, "interval_seconds", 1.0)),
+            "fixed_count": self.project_manager.data.settings.get("fixed_count", getattr(self.config.frame, "fixed_count", 100)),
         }
 
         prog_diag = ProgressDialog("Adding Videos & Extracting Frames...", self)
