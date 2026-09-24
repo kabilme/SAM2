@@ -239,3 +239,112 @@ class ProjectManager:
     def set_frames(self, frames: List[FrameMetadata]) -> None:
         self.frames = frames
         self.is_dirty = True
+
+    def delete_frames(
+        self,
+        frame_ids: List[int],
+        delete_files: bool = True,
+        annotation_manager: Optional[AnnotationManager] = None,
+        frame_cache: Optional[Any] = None,
+    ) -> List[int]:
+        """Delete one or more frames from the project.
+
+        Args:
+            frame_ids: List of project frame IDs (1-based) to delete.
+            delete_files: If True, delete extracted image, thumbnail, and annotation files from disk.
+            annotation_manager: Optional AnnotationManager to purge and re-index annotations.
+            frame_cache: Optional FrameCache to evict deleted images.
+
+        Returns:
+            List of successfully deleted original frame IDs.
+        """
+        if not frame_ids or not self.frames:
+            return []
+
+        target_set = set(frame_ids)
+        deleted_frames = [f for f in self.frames if f.frame_id in target_set]
+        if not deleted_frames:
+            return []
+
+        # 1. Clean up files and cache for deleted frames
+        for f in deleted_frames:
+            if frame_cache:
+                try:
+                    frame_cache.evict(f.filename, f.thumbnail_filename)
+                except Exception as e:
+                    logger.warning("Error evicting %s from frame cache: %s", f.filename, e)
+
+            if delete_files:
+                # Delete frame image
+                if self.frames_dir:
+                    img_path = self.frames_dir / f.filename
+                    try:
+                        img_path.unlink(missing_ok=True)
+                    except Exception as e:
+                        logger.warning("Could not delete frame image %s: %s", img_path, e)
+
+                # Delete thumbnail
+                if self.thumbnails_dir:
+                    thumb_path = self.thumbnails_dir / f.thumbnail_filename
+                    try:
+                        thumb_path.unlink(missing_ok=True)
+                    except Exception as e:
+                        logger.warning("Could not delete thumbnail %s: %s", thumb_path, e)
+
+                # Delete annotation json if exists
+                if self.annotations_dir:
+                    stem = Path(f.filename).stem
+                    json_path = self.annotations_dir / f"{stem}.json"
+                    try:
+                        json_path.unlink(missing_ok=True)
+                    except Exception as e:
+                        logger.warning("Could not delete annotation file %s: %s", json_path, e)
+
+        # 2. Build mapping from old frame_id to new continuous frame_id (1..N)
+        remaining_frames: List[FrameMetadata] = []
+        old_to_new: Dict[int, int] = {}
+        new_id = 1
+        for f in self.frames:
+            if f.frame_id in target_set:
+                continue
+            old_to_new[f.frame_id] = new_id
+            f.frame_id = new_id
+            new_id += 1
+            remaining_frames.append(f)
+
+        self.frames = remaining_frames
+
+        # 3. Update annotations in annotation_manager if provided
+        if annotation_manager:
+            new_frame_annotations: Dict[int, List[Any]] = {}
+            for old_id, annos in list(annotation_manager.frame_annotations.items()):
+                if old_id in target_set:
+                    continue
+                new_fid = old_to_new.get(old_id, old_id)
+                for a in annos:
+                    a.frame_id = new_fid
+                new_frame_annotations[new_fid] = annos
+            annotation_manager.frame_annotations = new_frame_annotations
+            # Clear undo/redo stacks since history states map to old frame indices
+            annotation_manager.undo_stack.clear()
+            annotation_manager.redo_stack.clear()
+
+        self.is_dirty = True
+        logger.info(
+            "Deleted %d frame(s) from project (IDs: %s). %d frames remaining.",
+            len(deleted_frames),
+            [f.frame_id for f in deleted_frames],
+            len(self.frames),
+        )
+        return [f.frame_id for f in deleted_frames]
+
+    def delete_frame(
+        self,
+        frame_id: int,
+        delete_files: bool = True,
+        annotation_manager: Optional[AnnotationManager] = None,
+        frame_cache: Optional[Any] = None,
+    ) -> bool:
+        """Delete a single frame from the project."""
+        deleted = self.delete_frames([frame_id], delete_files, annotation_manager, frame_cache)
+        return len(deleted) > 0

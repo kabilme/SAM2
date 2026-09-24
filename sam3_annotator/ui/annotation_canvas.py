@@ -99,6 +99,11 @@ class AnnotationCanvas(QGraphicsView):
         self.active_prompt_points.clear()
 
         if image_bgr is None or image_bgr.size == 0:
+            self.scene.clear()
+            self.pixmap_item = None
+            self.current_annotations = []
+            self.image_width = 0
+            self.image_height = 0
             return
 
         h, w = image_bgr.shape[:2]

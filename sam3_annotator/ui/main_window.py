@@ -39,6 +39,7 @@ from sam3_annotator.ui.project_dialog import ProjectDialog
 from sam3_annotator.ui.export_dialog import ExportDialog
 from sam3_annotator.ui.settings_dialog import SettingsDialog
 from sam3_annotator.ui.progress_dialog import ProgressDialog
+from sam3_annotator.ui.delete_frame_dialog import DeleteFrameDialog
 from sam3_annotator.utils.device_utils import get_system_diagnostics
 from sam3_annotator.utils.logging_utils import logger
 
@@ -248,9 +249,13 @@ class MainWindow(QMainWindow):
 
         # Connect inter-widget signals
         self.video_panel.frame_selected.connect(self._on_frame_selected)
+        self.video_panel.delete_requested.connect(self.delete_frames)
+        self.video_panel.mark_null_requested.connect(self._on_mark_null_batch)
+        self.video_panel.mark_reviewed_requested.connect(self._on_mark_reviewed_batch)
         self.timeline.frame_changed.connect(self._on_frame_selected)
         self.timeline.keyframe_toggled.connect(self._on_keyframe_toggled)
         self.timeline.null_frame_clicked.connect(self._mark_frame_negative)
+        self.timeline.delete_frame_clicked.connect(self.delete_current_frame)
 
         self.class_panel.class_selected.connect(self._on_class_selected)
         self.class_panel.classes_modified.connect(self._on_classes_modified)
@@ -307,6 +312,10 @@ class MainWindow(QMainWindow):
         del_act = edit_menu.addAction("&Delete Selected Object")
         del_act.setShortcut(QKeySequence("Delete"))
         del_act.triggered.connect(self._delete_active_object)
+
+        del_frame_act = edit_menu.addAction("Delete Current &Frame...")
+        del_frame_act.setShortcut(QKeySequence("Ctrl+Delete"))
+        del_frame_act.triggered.connect(self.delete_current_frame)
 
         # Annotation Menu
         anno_menu = mb.addMenu("&Annotation")
@@ -829,6 +838,96 @@ class MainWindow(QMainWindow):
             self.video_panel.apply_filter()
             self.timeline.set_current_frame(frame_id)
             self.project_manager.is_dirty = True
+
+    def delete_current_frame(self) -> None:
+        """Delete the currently active video frame from the project."""
+        if not self.project_manager.frames:
+            QMessageBox.information(self, "No Frames", "There are no video frames in the current project.")
+            return
+        fid = self.annotation_manager.active_frame_id
+        self.delete_frames([fid])
+
+    def delete_frames(self, frame_ids: Optional[List[int]] = None) -> None:
+        """Prompt confirmation and delete specified frame(s) from project."""
+        if not self.project_manager.project_dir or not self.project_manager.frames:
+            QMessageBox.warning(self, "No Project", "No active project is open.")
+            return
+
+        if not frame_ids:
+            frame_ids = [self.annotation_manager.active_frame_id]
+
+        target_set = set(frame_ids)
+        frames_to_del = [f for f in self.project_manager.frames if f.frame_id in target_set]
+        if not frames_to_del:
+            return
+
+        # Gather annotation counts for warning dialog
+        anno_counts = {
+            f.frame_id: len(self.annotation_manager.get_annotations_for_frame(f.frame_id))
+            for f in frames_to_del
+        }
+
+        # Show confirmation dialog
+        dialog = DeleteFrameDialog(frames_to_del, anno_counts, parent=self)
+        if not dialog.exec():
+            return
+
+        delete_files = dialog.should_delete_files()
+        lowest_id = min(f.frame_id for f in frames_to_del)
+
+        # Perform deletion in ProjectManager
+        deleted = self.project_manager.delete_frames(
+            frame_ids=[f.frame_id for f in frames_to_del],
+            delete_files=delete_files,
+            annotation_manager=self.annotation_manager,
+            frame_cache=self.frame_cache,
+        )
+
+        # Save project state atomically
+        self.project_manager.save_project(self.annotation_manager)
+
+        # Update UI components
+        remaining_count = len(self.project_manager.frames)
+        self.video_panel.set_frames(self.project_manager.frames)
+        self.timeline.set_frames(self.project_manager.frames)
+
+        if remaining_count > 0:
+            new_active_id = max(1, min(lowest_id, remaining_count))
+            self._on_frame_selected(new_active_id)
+        else:
+            self.annotation_manager.active_frame_id = 1
+            self.canvas.set_image(None)
+            self.properties_panel.set_annotations([])
+            self.status_frame_label.setText("Frame: 0 / 0")
+            self.status_objects_label.setText("Objects: 0")
+
+        self.status_save_label.setText("Saved")
+        msg = f"Deleted {len(deleted)} frame(s) successfully."
+        self.statusBar().showMessage(msg, 4000)
+        logger.info(msg)
+
+    def _on_mark_null_batch(self, frame_ids: List[int]) -> None:
+        """Mark multiple frames as null (negative background) frames."""
+        for fid in frame_ids:
+            if 0 < fid <= len(self.project_manager.frames):
+                self.project_manager.frames[fid - 1].review_status = "negative"
+                self.annotation_manager.clear_frame_annotations(fid)
+        self.video_panel.apply_filter()
+        if self.annotation_manager.active_frame_id in frame_ids:
+            self._on_frame_selected(self.annotation_manager.active_frame_id)
+        self.project_manager.is_dirty = True
+        self.project_manager.save_project(self.annotation_manager)
+
+    def _on_mark_reviewed_batch(self, frame_ids: List[int]) -> None:
+        """Mark multiple frames as reviewed."""
+        for fid in frame_ids:
+            if 0 < fid <= len(self.project_manager.frames):
+                self.project_manager.frames[fid - 1].review_status = "reviewed"
+        self.video_panel.apply_filter()
+        if self.annotation_manager.active_frame_id in frame_ids:
+            self._on_frame_selected(self.annotation_manager.active_frame_id)
+        self.project_manager.is_dirty = True
+        self.project_manager.save_project(self.annotation_manager)
 
     # ---------------- Dataset & Settings ----------------
 

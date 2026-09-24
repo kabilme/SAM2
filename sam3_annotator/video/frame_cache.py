@@ -54,6 +54,12 @@ class FrameCache:
         self._cache.clear()
         self._thumb_cache.clear()
 
+    def evict(self, filename: str, thumb_filename: Optional[str] = None) -> None:
+        """Evict a specific frame and optional thumbnail from cache."""
+        self._cache.pop(filename, None)
+        if thumb_filename:
+            self._thumb_cache.pop(thumb_filename, None)
+
     @property
     def current_size(self) -> int:
         return len(self._cache)

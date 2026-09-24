@@ -16,6 +16,7 @@ class FrameTimeline(QWidget):
     frame_changed = Signal(int)  # frame_id
     keyframe_toggled = Signal(int, bool)  # frame_id, is_keyframe
     null_frame_clicked = Signal()
+    delete_frame_clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -95,6 +96,14 @@ class FrameTimeline(QWidget):
         self.null_btn.clicked.connect(self.null_frame_clicked.emit)
         ctrl_layout.addWidget(self.null_btn)
 
+        self.delete_frame_btn = QPushButton("🗑 Delete Frame")
+        self.delete_frame_btn.setToolTip("Delete current video frame from project (Ctrl+Delete)")
+        self.delete_frame_btn.setStyleSheet(
+            "QPushButton:hover { background-color: #5c1d1d; border-color: #d32f2f; color: #ffcdd2; }"
+        )
+        self.delete_frame_btn.clicked.connect(self.delete_frame_clicked.emit)
+        ctrl_layout.addWidget(self.delete_frame_btn)
+
         ctrl_layout.addStretch()
 
         self.status_badge = QLabel("Status: Unreviewed")
@@ -121,9 +130,17 @@ class FrameTimeline(QWidget):
 
             self.set_current_frame(1)
         else:
+            self.slider.blockSignals(True)
+            self.frame_spin.blockSignals(True)
             self.slider.setRange(1, 1)
             self.frame_spin.setRange(1, 1)
             self.frame_count_label.setText("/ 0")
+            self.time_label.setText("00:00.000")
+            self.total_time_label.setText("00:00.000")
+            self.status_badge.setText("Status: No Frames")
+            self.status_badge.setStyleSheet("color: #666666;")
+            self.slider.blockSignals(False)
+            self.frame_spin.blockSignals(False)
 
     def set_current_frame(self, frame_id: int) -> None:
         if not self.frames:
@@ -153,6 +170,8 @@ class FrameTimeline(QWidget):
             self.status_badge.setStyleSheet("color: #aaaaaa; font-weight: bold;")
 
     def step_next(self) -> None:
+        if not self.frames:
+            return
         if self.current_frame_id < len(self.frames):
             self.set_current_frame(self.current_frame_id + 1)
             self.frame_changed.emit(self.current_frame_id)
@@ -160,6 +179,8 @@ class FrameTimeline(QWidget):
             self.toggle_play()
 
     def step_prev(self) -> None:
+        if not self.frames:
+            return
         if self.current_frame_id > 1:
             self.set_current_frame(self.current_frame_id - 1)
             self.frame_changed.emit(self.current_frame_id)
