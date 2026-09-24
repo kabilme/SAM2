@@ -1,0 +1,35 @@
+app:
+  name: SAM3 Video Polygon Annotator
+  version: 1.0.0
+model:
+  device: auto
+  precision: fp32
+  checkpoint_path: sam2.1_t.pt
+  default_model_type: sam2.1_t.pt
+frame:
+  default_sampling: every_n
+  every_n: 10
+  interval_seconds: 1.0
+  fixed_count: 100
+  cache_size_limit: 100
+  jpeg_quality: 95
+  image_format: jpg
+polygon:
+  simplify_tolerance: 0.005
+  min_area: 20.0
+  morphology_cleanup: true
+  remove_duplicate_vertices: true
+dataset:
+  train_ratio: 0.7
+  val_ratio: 0.2
+  test_ratio: 0.1
+  split_strategy: sequential
+  export_masks: true
+  export_previews: true
+  create_zip: true
+ui:
+  mask_opacity: 0.45
+  vertex_radius: 5
+  line_width: 2
+  autosave_interval_seconds: 30
+  dark_theme: true

@@ -70,7 +70,12 @@ class AppConfig:
     def load(cls, path: Optional[Path] = None) -> "AppConfig":
         """Load configuration from YAML file or return defaults."""
         if path is None:
-            path = Path(__file__).parent / "defaults.yaml"
+            # Check workspace root config/defaults.yaml first, then package defaults
+            root_cfg = Path("config") / "defaults.yaml"
+            if root_cfg.exists():
+                path = root_cfg
+            else:
+                path = Path(__file__).parent / "defaults.yaml"
 
         if not path.exists():
             logger.info("Configuration file %s not found. Using default values.", path)

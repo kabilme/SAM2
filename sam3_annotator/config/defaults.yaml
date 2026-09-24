@@ -7,7 +7,7 @@ app:
 model:
   device: "auto"              # "auto", "cuda", "cpu"
   precision: "fp32"           # "fp32", "fp16", "bf16"
-  checkpoint_path: ""         # Path to local checkpoint (.pt)
+  checkpoint_path: "sam2.1_t.pt" # Path to local checkpoint (.pt)
   default_model_type: "sam2.1_t.pt" # Default model weight identifier
 
 frame:
