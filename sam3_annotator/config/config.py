@@ -13,8 +13,8 @@ from sam3_annotator.utils.logging_utils import logger
 class ModelConfig:
     device: str = "auto"
     precision: str = "fp32"
-    checkpoint_path: str = ""
-    default_model_type: str = "sam2.1_t.pt"
+    checkpoint_path: str = "sam2.1_hiera_tiny.pt"
+    default_model_type: str = "sam2.1_hiera_tiny.pt"
 
 
 @dataclass

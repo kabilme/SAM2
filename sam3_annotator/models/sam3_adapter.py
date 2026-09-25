@@ -217,7 +217,23 @@ class SAM3LocalAdapter(SAM3AdapterInterface):
     ) -> bool:
         """Load SAM model using Ultralytics SAM architecture."""
         try:
+            import ultralytics.models.sam.build as sam_build
             from ultralytics import SAM
+
+            # Register Meta official checkpoint names in Ultralytics model map
+            meta_map = {
+                "sam2.1_hiera_tiny.pt": "sam2.1_t.pt",
+                "sam2.1_hiera_small.pt": "sam2.1_s.pt",
+                "sam2.1_hiera_base_plus.pt": "sam2.1_b.pt",
+                "sam2.1_hiera_large.pt": "sam2.1_l.pt",
+                "sam2_hiera_tiny.pt": "sam2_t.pt",
+                "sam2_hiera_small.pt": "sam2_s.pt",
+                "sam2_hiera_base_plus.pt": "sam2_b.pt",
+                "sam2_hiera_large.pt": "sam2_l.pt",
+            }
+            for meta_name, ultra_name in meta_map.items():
+                if meta_name not in sam_build.sam_model_map and ultra_name in sam_build.sam_model_map:
+                    sam_build.sam_model_map[meta_name] = sam_build.sam_model_map[ultra_name]
 
             # Select device
             torch_dev = get_torch_device(device)
@@ -226,7 +242,20 @@ class SAM3LocalAdapter(SAM3AdapterInterface):
 
             # Determine checkpoint
             if not checkpoint_path:
-                checkpoint_path = "sam2.1_t.pt"  # Lightweight default model
+                checkpoint_path = "sam2.1_hiera_tiny.pt"  # Meta SAM 2.1 Hiera Tiny model
+
+            ckpt_file = Path(checkpoint_path)
+            if not ckpt_file.exists():
+                if ckpt_file.name == "sam2.1_hiera_tiny.pt":
+                    alt = Path("sam2.1_t.pt")
+                    if alt.exists():
+                        logger.info("Using local fallback %s for %s", alt.name, ckpt_file.name)
+                        checkpoint_path = str(alt)
+                    else:
+                        logger.info("Downloading official Meta %s...", ckpt_file.name)
+                        import urllib.request
+                        url = "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt"
+                        urllib.request.urlretrieve(url, str(ckpt_file))
 
             self.checkpoint_path = checkpoint_path
             logger.info("Initializing SAM model (%s) on %s with %s precision...",

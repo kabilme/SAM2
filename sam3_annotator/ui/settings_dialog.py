@@ -35,7 +35,7 @@ class SettingsDialog(QDialog):
         # Checkpoint path
         ckpt_layout = QHBoxLayout()
         self.ckpt_edit = QLineEdit(self.config.model.checkpoint_path)
-        self.ckpt_edit.setPlaceholderText("e.g. sam2.1_t.pt or custom SAM 3 weights...")
+        self.ckpt_edit.setPlaceholderText("e.g. sam2.1_hiera_tiny.pt or custom SAM 3 weights...")
         browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self._browse_ckpt)
         ckpt_layout.addWidget(self.ckpt_edit)

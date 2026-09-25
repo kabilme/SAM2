@@ -53,12 +53,16 @@ def test_mock_sam3_integration_pipeline():
     assert len(polygons[0]) >= 3  # Valid polygon has at least 3 vertices
 
 
-@pytest.mark.skipif(not Path("sam2.1_t.pt").exists(), reason="SAM model checkpoint not present locally")
+@pytest.mark.skipif(
+    not (Path("sam2.1_hiera_tiny.pt").exists() or Path("sam2.1_t.pt").exists()),
+    reason="SAM model checkpoint not present locally",
+)
 def test_real_sam_local_adapter_pipeline():
-    """Verify Section 109 criteria with real SAM model checkpoint (sam2.1_t.pt)."""
+    """Verify Section 109 criteria with real SAM model checkpoint (sam2.1_hiera_tiny.pt)."""
     # 1. Model can initialize
+    ckpt = "sam2.1_hiera_tiny.pt" if Path("sam2.1_hiera_tiny.pt").exists() else "sam2.1_t.pt"
     adapter = SAM3LocalAdapter()
-    init_ok = adapter.load_model(checkpoint_path="sam2.1_t.pt", device="cpu")
+    init_ok = adapter.load_model(checkpoint_path=ckpt, device="cpu")
     assert init_ok is True
     assert adapter.is_loaded() is True
 
