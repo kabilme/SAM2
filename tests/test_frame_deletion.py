@@ -1,20 +1,20 @@
-"""Tests for video frame deletion and continuous re-indexing in SAM3 Video Annotator."""
+"""Tests for video frame deletion and continuous re-indexing in SAM2 Video Annotator."""
 
 import tempfile
 from pathlib import Path
 import cv2
 import numpy as np
 
-from sam3_annotator.project.project_manager import ProjectManager
-from sam3_annotator.project.project_schema import ClassItem
-from sam3_annotator.annotation.annotation_manager import AnnotationManager
-from sam3_annotator.annotation.polygon import PolygonAnnotation
-from sam3_annotator.video.frame_extractor import FrameExtractor
-from sam3_annotator.video.video_reader import VideoReader
-from sam3_annotator.video.frame_cache import FrameCache
-from sam3_annotator.dataset.split_manager import DatasetSplitter
-from sam3_annotator.dataset.yolo_exporter import YOLOExporter
-from sam3_annotator.dataset.dataset_validator import DatasetValidator
+from sam2_annotator.project.project_manager import ProjectManager
+from sam2_annotator.project.project_schema import ClassItem
+from sam2_annotator.annotation.annotation_manager import AnnotationManager
+from sam2_annotator.annotation.polygon import PolygonAnnotation
+from sam2_annotator.video.frame_extractor import FrameExtractor
+from sam2_annotator.video.video_reader import VideoReader
+from sam2_annotator.video.frame_cache import FrameCache
+from sam2_annotator.dataset.split_manager import DatasetSplitter
+from sam2_annotator.dataset.yolo_exporter import YOLOExporter
+from sam2_annotator.dataset.dataset_validator import DatasetValidator
 
 
 def create_synthetic_video(file_path: Path, num_frames: int = 10, width: int = 320, height: int = 240) -> None:

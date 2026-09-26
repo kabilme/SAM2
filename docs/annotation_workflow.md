@@ -1,13 +1,13 @@
 # Annotation & Tracking Workflow
 
-This guide details the interactive annotation lifecycle, prompt modes, polygon conversion, and multi-frame propagation in the **SAM3 Video Polygon Annotator**.
+This guide details the interactive annotation lifecycle, prompt modes, polygon conversion, and multi-frame propagation in the **SAM2 Video Polygon Annotator**.
 
 ---
 
 ## 1. The Annotation Lifecycle
 
 ```
-Select Frame → Select Class → Prompt SAM 3 → Generate Mask → Convert to Polygon → Refine Vertices → Propagate / Review
+Select Frame → Select Class → Prompt SAM 2 → Generate Mask → Convert to Polygon → Refine Vertices → Propagate / Review
 ```
 
 ### Step 1: Frame Navigation

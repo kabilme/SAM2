@@ -1,7 +1,7 @@
 # SAM 2.1 Video Polygon Annotator
 
 > [!IMPORTANT]
-> **Active Model Specification**: This application exclusively uses **Meta Segment Anything 2.1 (SAM 2.1)** for all segmentation tasks (default checkpoint: `sam2.1_hiera_tiny.pt`). This project does **not** use SAM 3 (which has not been released). While the internal project repository and package name are labeled `sam3_annotator`, the actual model loaded, executed, and integrated throughout this application is **SAM 2.1**.
+> **Active Model Specification**: This application exclusively uses **Meta Segment Anything 2.1 (SAM 2.1)** for all segmentation tasks (default checkpoint: `sam2.1_hiera_tiny.pt`). This project does **not** use SAM 2 (which has not been released). While the internal project repository and package name are labeled `sam2_annotator`, the actual model loaded, executed, and integrated throughout this application is **SAM 2.1**.
 
 A high-performance, local-first Python desktop application for interactive **SAM 2.1 assisted polygon annotation** on video frames and automated **YOLOv8 instance-segmentation dataset export**, inspired by modern computer-vision platforms like Roboflow.
 
@@ -47,8 +47,8 @@ Annotations can be propagated forward across subsequent video frames using objec
 
 This project uses **Meta Segment Anything 2.1 (SAM 2.1)**. 
 
-- **No SAM 3**: Meta AI has not released a SAM 3 model. The application does not use or simulate any fictitious SAM 3 architecture.
-- **Production Engine**: The application integrates the official **SAM 2.1** architecture using PyTorch and the Ultralytics SAM engine (`sam3_annotator/models/sam3_adapter.py`).
+- **No SAM 2**: Meta AI has not released a SAM 2 model. The application does not use or simulate any fictitious SAM 2 architecture.
+- **Production Engine**: The application integrates the official **SAM 2.1** architecture using PyTorch and the Ultralytics SAM engine (`sam2_annotator/models/sam2_adapter.py`).
 - **Default Checkpoint**: The project runs Meta's official **`sam2.1_hiera_tiny.pt`** (156 MB) by default, with automatic fallback support for `sam2.1_t.pt` (78 MB).
 - **Dynamic Model Title**: The application UI dynamically inspects the loaded model and displays the active checkpoint name (e.g., `sam2.1_hiera_tiny.pt`) in the window title bar and toolbar.
 
@@ -107,7 +107,7 @@ This project uses **Meta Segment Anything 2.1 (SAM 2.1)**.
 
 ## 7. SAM 2.1 Architecture & Supported Checkpoints
 
-The application uses an isolated model adapter layer (`sam3_annotator/models/sam3_adapter.py`) interfacing with the official Ultralytics SAM 2.1 implementation.
+The application uses an isolated model adapter layer (`sam2_annotator/models/sam2_adapter.py`) interfacing with the official Ultralytics SAM 2.1 implementation.
 
 ### Default Checkpoint
 The default model is Meta's **`sam2.1_hiera_tiny.pt`** (156 MB), offering the optimal balance between interactive latency and crisp object boundary accuracy.
@@ -131,7 +131,7 @@ You can switch models dynamically in the application via **Edit > Settings** (`C
 
 ```bash
 # 1. Clone or navigate to the repository
-cd D:/SAM3
+cd D:/SAM2
 
 # 2. Create and activate a virtual environment
 python -m venv .venv
@@ -303,14 +303,14 @@ Headless CLI commands enable integration into automated video processing scripts
 ```bash
 python main.py --extract-frames path/to/video.mp4 --output extracted_frames --every-n 10
 # or via CLI module with custom strategy:
-python -m sam3_annotator.cli.extract_cli --video path/to/video.mp4 --output frames/ --strategy interval_seconds --interval-seconds 0.5
+python -m sam2_annotator.cli.extract_cli --video path/to/video.mp4 --output frames/ --strategy interval_seconds --interval-seconds 0.5
 ```
 
 ### 2. Export Project to YOLO Dataset:
 ```bash
 python main.py --export projects/my_project --output yolo_dataset
 # or via CLI module with custom split ratios:
-python -m sam3_annotator.cli.export_cli --project projects/my_project --output yolo_dataset --train-ratio 0.8 --val-ratio 0.15 --test-ratio 0.05 --split-strategy sequential
+python -m sam2_annotator.cli.export_cli --project projects/my_project --output yolo_dataset --train-ratio 0.8 --val-ratio 0.15 --test-ratio 0.05 --split-strategy sequential
 ```
 
 ### 3. Validate Dataset:
@@ -326,7 +326,7 @@ Application defaults are configured in `config/defaults.yaml`:
 
 ```yaml
 app:
-  name: SAM3 Video Polygon Annotator
+  name: SAM2 Video Polygon Annotator
   version: 1.0.0
 model:
   device: auto
@@ -366,7 +366,7 @@ ui:
 
 ## 21. Troubleshooting & FAQ
 
-- **Does this app use SAM 3?**: No. Meta has not released SAM 3. The application exclusively uses **SAM 2.1** (specifically the `sam2.1_hiera_tiny.pt` checkpoint by default).
+- **Does this app use SAM 2?**: No. Meta has not released SAM 2. The application exclusively uses **SAM 2.1** (specifically the `sam2.1_hiera_tiny.pt` checkpoint by default).
 - **CUDA Out of Memory**: In **Settings** (`Ctrl+,`), switch precision to `fp16` or launch with `--device cpu`.
 - **Checkpoint Not Found**: Place `sam2.1_hiera_tiny.pt` or `sam2.1_t.pt` in the project root directory, or select your downloaded checkpoint in the Settings dialog.
 - **Corrupt Video Codec**: Re-encode unsupported video formats to standard H.264 MP4 using FFmpeg:
@@ -381,7 +381,7 @@ ui:
 ## 22. Repository Structure
 
 ```
-SAM3/
+SAM2/
 ├── main.py                     <- Unified application entry point (CLI & GUI)
 ├── requirements.txt            <- Python dependencies
 ├── pyproject.toml              <- Build & packaging configuration
@@ -392,11 +392,11 @@ SAM3/
 ├── docs/                       <- Comprehensive guides & documentation
 │   ├── annotation_workflow.md  <- Interactive prompting & editing guide
 │   ├── installation.md         <- Detailed installation walkthrough
-│   ├── sam3_setup.md           <- SAM model configuration & benchmarks
+│   ├── sam2_setup.md           <- SAM model configuration & benchmarks
 │   ├── troubleshooting.md      <- Common issues and recovery steps
 │   ├── user_guide.md           <- End-to-end user manual
 │   └── yolo_export.md          <- YOLOv8 export specification
-├── sam3_annotator/             <- Main application package
+├── sam2_annotator/             <- Main application package
 │   ├── annotation/             <- Polygon math, editing, tracking & serialization
 │   ├── cli/                    <- Standalone CLI modules (extract & export)
 │   ├── config/                 <- App configuration loader & schemas

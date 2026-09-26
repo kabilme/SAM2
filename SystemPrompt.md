@@ -1,17 +1,17 @@
 You are a senior Python computer-vision engineer, ML engineer, and UI/UX developer.
 
-Your task is to design and implement a complete production-quality Python application that performs SAM 3 assisted polygon annotation on frames extracted from an input video, similar in workflow to modern browser-based annotation platforms such as Roboflow.
+Your task is to design and implement a complete production-quality Python application that performs SAM 2 assisted polygon annotation on frames extracted from an input video, similar in workflow to modern browser-based annotation platforms such as Roboflow.
 
-The application must be LOCAL-FIRST. It must run on the user's computer, use the local GPU when available, process video files locally, perform SAM 3 inference locally, allow interactive polygon editing, and export a complete YOLOv8-compatible instance-segmentation dataset.
+The application must be LOCAL-FIRST. It must run on the user's computer, use the local GPU when available, process video files locally, perform SAM 2 inference locally, allow interactive polygon editing, and export a complete YOLOv8-compatible instance-segmentation dataset.
 
 Do not create a conceptual prototype. Implement a functional application with proper error handling, persistent project files, a usable graphical interface, and a complete dataset export pipeline.
 
 IMPORTANT:
 - Do not implement a fake or placeholder segmentation algorithm.
-- Do not replace SAM 3 with a different segmentation model unless explicitly required as a fallback.
-- Do not assume a fixed SAM 3 API if the installed SAM 3 version exposes a different API.
-- Inspect the installed SAM 3 package/repository and use the currently available public APIs.
-- Keep all SAM 3-specific integration isolated inside a dedicated adapter/service layer so that future SAM 3 API changes do not require rewriting the entire application.
+- Do not replace SAM 2 with a different segmentation model unless explicitly required as a fallback.
+- Do not assume a fixed SAM 2 API if the installed SAM 2 version exposes a different API.
+- Inspect the installed SAM 2 package/repository and use the currently available public APIs.
+- Keep all SAM 2-specific integration isolated inside a dedicated adapter/service layer so that future SAM 2 API changes do not require rewriting the entire application.
 - The application must continue to work without internet access after the required Python dependencies and model weights have been installed.
 - Never upload the user's video, frames, masks, or annotations to an external service unless an explicit cloud integration is later requested.
 - Preserve original video frames and project data. Never destructively modify source files.
@@ -22,7 +22,7 @@ IMPORTANT:
 
 Build a Python desktop application named:
 
-SAM3 Video Polygon Annotator
+SAM2 Video Polygon Annotator
 
 The application workflow must be:
 
@@ -36,7 +36,7 @@ Frame browser
     ↓
 Select frame
     ↓
-SAM 3 prompt-based segmentation
+SAM 2 prompt-based segmentation
     ↓
 Generate object mask
     ↓
@@ -70,7 +70,7 @@ The final output should be directly usable for training an Ultralytics YOLO segm
 2. RECOMMENDED TECHNOLOGY STACK
 ==================================================
 
-Use Python 3.11 or a currently supported Python version compatible with the installed SAM 3 environment.
+Use Python 3.11 or a currently supported Python version compatible with the installed SAM 2 environment.
 
 Preferred components:
 
@@ -82,9 +82,9 @@ Core:
 - PIL/Pillow
 
 SAM:
-- Meta SAM 3
-- Official SAM 3 Python implementation
-- Official SAM 3 checkpoint/model loading mechanisms
+- Meta SAM 2
+- Official SAM 2 Python implementation
+- Official SAM 2 checkpoint/model loading mechanisms
 
 GUI:
 - PySide6
@@ -133,7 +133,7 @@ Use a modular architecture.
 
 Suggested structure:
 
-sam3_annotator/
+sam2_annotator/
 │
 ├── app.py
 ├── main.py
@@ -143,9 +143,9 @@ sam3_annotator/
 │   └── defaults.yaml
 │
 ├── models/
-│   ├── sam3_adapter.py
-│   ├── sam3_image_service.py
-│   └── sam3_video_service.py
+│   ├── sam2_adapter.py
+│   ├── sam2_image_service.py
+│   └── sam2_video_service.py
 │
 ├── video/
 │   ├── video_reader.py
@@ -200,7 +200,7 @@ sam3_annotator/
 
 Keep model-specific functionality independent from UI code.
 
-The GUI must never directly invoke low-level SAM 3 inference code.
+The GUI must never directly invoke low-level SAM 2 inference code.
 
 ==================================================
 4. APPLICATION STARTUP
@@ -226,7 +226,7 @@ Device:
 GPU: NVIDIA RTX XXXXX
 CUDA: Available
 PyTorch: XXXXX
-SAM 3: Loaded / Not Loaded
+SAM 2: Loaded / Not Loaded
 
 3. Allow the user to select:
    - CUDA
@@ -261,7 +261,7 @@ Output Directory
 Class Names
 Frame Sampling Method
 Train/Validation/Test Split
-SAM 3 Model
+SAM 2 Model
 
 Allow users to define multiple classes.
 
@@ -483,7 +483,7 @@ M:
 Manual polygon mode
 
 S:
-SAM 3 mode
+SAM 2 mode
 
 ==================================================
 11. ANNOTATION MODES
@@ -492,16 +492,16 @@ SAM 3 mode
 Implement at least these annotation modes.
 
 MODE A:
-SAM 3 Text Prompt
+SAM 2 Text Prompt
 
 MODE B:
-SAM 3 Positive Click
+SAM 2 Positive Click
 
 MODE C:
-SAM 3 Negative Click
+SAM 2 Negative Click
 
 MODE D:
-SAM 3 Bounding Box / Exemplar Prompt
+SAM 2 Bounding Box / Exemplar Prompt
 
 MODE E:
 Manual Polygon
@@ -513,7 +513,7 @@ MODE G:
 Object Tracking / Propagation
 
 ==================================================
-12. SAM 3 TEXT PROMPT
+12. SAM 2 TEXT PROMPT
 ==================================================
 
 Provide a text prompt field.
@@ -524,8 +524,8 @@ Example:
 
 When user enters the prompt and runs segmentation:
 
-1. Send the current image/frame to SAM 3.
-2. Submit the text prompt through the official SAM 3 API.
+1. Send the current image/frame to SAM 2.
+2. Submit the text prompt through the official SAM 2 API.
 3. Retrieve segmentation results.
 4. Retrieve masks and associated detections.
 5. Display masks over the image.
@@ -533,13 +533,13 @@ When user enters the prompt and runs segmentation:
 7. Convert the selected mask to polygon.
 8. Assign the corresponding class.
 
-Do not hard-code the exact SAM 3 inference call.
+Do not hard-code the exact SAM 2 inference call.
 
 Instead:
 
-Create a SAM3Adapter abstraction:
+Create a SAM2Adapter abstraction:
 
-class SAM3Adapter:
+class SAM2Adapter:
     load_model()
     segment_image()
     segment_with_text()
@@ -550,7 +550,7 @@ class SAM3Adapter:
     refine_mask()
     release()
 
-Implement the adapter based on the currently installed official SAM 3 API.
+Implement the adapter based on the currently installed official SAM 2 API.
 
 ==================================================
 13. POSITIVE CLICK PROMPT
@@ -564,7 +564,7 @@ A positive click is displayed as:
 
 When executed:
 
-1. Send point coordinates to SAM 3.
+1. Send point coordinates to SAM 2.
 2. Generate candidate mask(s).
 3. Display candidate masks.
 4. Allow candidate selection.
@@ -572,7 +572,7 @@ When executed:
 
 Coordinate transformation is critical.
 
-The canvas may be zoomed and panned, but SAM 3 must receive coordinates relative to the ORIGINAL frame.
+The canvas may be zoomed and panned, but SAM 2 must receive coordinates relative to the ORIGINAL frame.
 
 Implement:
 
@@ -602,7 +602,7 @@ Send:
 positive_points
 negative_points
 
-to SAM 3 using the currently supported visual-prompt API.
+to SAM 2 using the currently supported visual-prompt API.
 
 Allow multiple positive and negative points.
 
@@ -634,7 +634,7 @@ Mouse Up
 ↓
 Show rectangle
 ↓
-Send rectangle/exemplar prompt to SAM 3
+Send rectangle/exemplar prompt to SAM 2
 ↓
 Generate mask
 ↓
@@ -677,7 +677,7 @@ Provide:
 
 This is one of the most important parts.
 
-SAM 3 produces masks.
+SAM 2 produces masks.
 
 YOLO segmentation requires polygons.
 
@@ -835,7 +835,7 @@ Example:
     "frame_id": 105,
     "source_frame_index": 2210,
     "confidence": 0.91,
-    "source": "sam3",
+    "source": "sam2",
     "tracking_status": "tracked",
     "modified": true
 }
@@ -871,19 +871,19 @@ Do not merge them simply because they have the same class.
 23. OBJECT TRACKING / PROPAGATION
 ==================================================
 
-Implement video propagation using the official SAM 3 video capabilities where supported.
+Implement video propagation using the official SAM 2 video capabilities where supported.
 
 Primary workflow:
 
 1. User annotates an object on frame N.
 2. User selects:
    "Propagate Forward"
-3. SAM 3 video/session logic propagates the object through subsequent frames.
+3. SAM 2 video/session logic propagates the object through subsequent frames.
 4. Generate masks for each propagated frame.
 5. Convert masks to polygons.
 6. Display generated annotations.
 7. Mark propagated annotations as:
-   source = "sam3_track"
+   source = "sam2_track"
 
 Also allow:
 
@@ -957,7 +957,7 @@ If interpolation is used:
 26. ANNOTATION CONFIDENCE
 ==================================================
 
-Store confidence where SAM 3 exposes a meaningful confidence/quality metric.
+Store confidence where SAM 2 exposes a meaningful confidence/quality metric.
 
 Display:
 
@@ -1086,7 +1086,7 @@ project.json must include:
 - frame extraction settings
 - classes
 - annotation metadata
-- SAM 3 configuration
+- SAM 2 configuration
 - dataset split configuration
 - application version
 
@@ -1640,10 +1640,10 @@ Locked objects cannot accidentally be modified.
 Store how every annotation was created:
 
 manual
-sam3_text
-sam3_point
-sam3_box
-sam3_track
+sam2_text
+sam2_point
+sam2_box
+sam2_track
 interpolated
 imported
 
@@ -1677,9 +1677,9 @@ Typical user workflow:
 
 1. Select frame.
 2. Select class "scooter".
-3. Select SAM 3.
+3. Select SAM 2.
 4. Click scooter.
-5. SAM 3 generates mask.
+5. SAM 2 generates mask.
 6. User sees mask.
 7. User adds positive point if required.
 8. User adds negative point on background.
@@ -1695,14 +1695,14 @@ This workflow must be extremely fast.
 Optimize for repeated annotation operations.
 
 ==================================================
-52. SAM 3 VIDEO WORKFLOW
+52. SAM 2 VIDEO WORKFLOW
 ==================================================
 
-Use SAM 3's video segmentation/tracking capability when available.
+Use SAM 2's video segmentation/tracking capability when available.
 
 Design:
 
-SAM3VideoSession
+SAM2VideoSession
 
 Responsibilities:
 
@@ -1716,7 +1716,7 @@ release()
 
 Do not mix UI logic into the video session.
 
-The adapter must translate application-level annotation requests into the currently supported SAM 3 API.
+The adapter must translate application-level annotation requests into the currently supported SAM 2 API.
 
 ==================================================
 53. TRACKING FAILURE HANDLING
@@ -1812,7 +1812,7 @@ Missing model
 Invalid checkpoint
 CUDA unavailable
 GPU out of memory
-SAM 3 initialization failure
+SAM 2 initialization failure
 SAM inference failure
 Invalid prompt
 Invalid polygon
@@ -2062,7 +2062,7 @@ Undo
 Redo
 
 Select
-SAM 3
+SAM 2
 Point+
 Point-
 Box
@@ -2197,7 +2197,7 @@ Keep CLI functionality independent from GUI functionality.
 
 Implement:
 
-python -m sam3_annotator.extract \
+python -m sam2_annotator.extract \
     --video input.mp4 \
     --output frames/ \
     --every-n 10
@@ -2212,7 +2212,7 @@ frames.json
 
 Implement:
 
-python -m sam3_annotator.export \
+python -m sam2_annotator.export \
     --project project/ \
     --output dataset/
 
@@ -2264,17 +2264,17 @@ Create unit tests for:
 - project serialization
 - project recovery
 
-Create integration tests using a tiny sample video and mockable SAM 3 adapter.
+Create integration tests using a tiny sample video and mockable SAM 2 adapter.
 
-The SAM3 adapter must be injectable so that tests do not require downloading or loading the full model.
+The SAM2 adapter must be injectable so that tests do not require downloading or loading the full model.
 
 ==================================================
-76. MOCK SAM3 ADAPTER
+76. MOCK SAM2 ADAPTER
 ==================================================
 
 Implement:
 
-MockSAM3Adapter
+MockSAM2Adapter
 
 for automated tests.
 
@@ -2284,29 +2284,29 @@ This is only for tests.
 
 Do NOT use it in production mode.
 
-Production must use the real SAM 3 implementation.
+Production must use the real SAM 2 implementation.
 
 ==================================================
 77. MODEL ADAPTER DESIGN
 ==================================================
 
-Do not hard-code SAM 3 implementation throughout the project.
+Do not hard-code SAM 2 implementation throughout the project.
 
 Use:
 
-SAM3AdapterInterface
+SAM2AdapterInterface
 
-SAM3LocalAdapter
+SAM2LocalAdapter
 
-MockSAM3Adapter
+MockSAM2Adapter
 
-If the actual SAM 3 API changes:
+If the actual SAM 2 API changes:
 
-only SAM3LocalAdapter should require modification.
+only SAM2LocalAdapter should require modification.
 
-Document precisely which official SAM 3 APIs are being used.
+Document precisely which official SAM 2 APIs are being used.
 
-Before implementation, inspect the installed SAM 3 repository/package to determine:
+Before implementation, inspect the installed SAM 2 repository/package to determine:
 
 - model initialization
 - checkpoint loading
@@ -2320,7 +2320,7 @@ Before implementation, inspect the installed SAM 3 repository/package to determi
 Do not invent API names.
 
 ==================================================
-78. SAM 3 PROMPT ABSTRACTION
+78. SAM 2 PROMPT ABSTRACTION
 ==================================================
 
 Create generic application-level prompt classes.
@@ -2339,7 +2339,7 @@ PointPrompt(
     negative_points=[...]
 )
 
-Then translate these into the installed SAM 3 API inside the adapter.
+Then translate these into the installed SAM 2 API inside the adapter.
 
 ==================================================
 79. MASK FORMAT
@@ -2460,9 +2460,9 @@ Generate thumbnails asynchronously.
 
 Use smaller images for the frame browser.
 
-Never perform SAM 3 inference on thumbnails.
+Never perform SAM 2 inference on thumbnails.
 
-SAM 3 inference should operate on the original-resolution frame or a deliberate model-input representation supported by the SAM 3 implementation.
+SAM 2 inference should operate on the original-resolution frame or a deliberate model-input representation supported by the SAM 2 implementation.
 
 Maintain coordinate mapping back to original image coordinates.
 
@@ -2501,7 +2501,7 @@ Avoid hard-coded pixel dimensions wherever possible.
 Right-click on object:
 
 Edit
-Refine with SAM 3
+Refine with SAM 2
 Change Class
 Hide
 Lock
@@ -2528,7 +2528,7 @@ Provide:
 Workflow:
 
 1. User enters class prompt.
-2. Application runs SAM 3 on selected frames.
+2. Application runs SAM 2 on selected frames.
 3. Candidate masks are generated.
 4. Masks are converted into polygons.
 5. Results are displayed for review.
@@ -2651,12 +2651,12 @@ Do not make claims about annotation accuracy that have not been measured.
 95. LICENSE / MODEL NOTICE
 ==================================================
 
-Because the application integrates Meta SAM 3:
+Because the application integrates Meta SAM 2:
 
-- retain any required SAM 3 license notices
+- retain any required SAM 2 license notices
 - clearly separate application code from the model package
 - do not redistribute model weights unless permitted
-- consult the currently installed SAM 3 repository/license before packaging or redistribution
+- consult the currently installed SAM 2 repository/license before packaging or redistribution
 - document model licensing requirements in README.md
 
 ==================================================
@@ -2690,9 +2690,9 @@ Do not blindly install conflicting versions of:
 torch
 torchvision
 CUDA-specific packages
-SAM 3 dependencies
+SAM 2 dependencies
 
-Clearly document SAM 3 environment requirements separately if the official project requires a specialized environment.
+Clearly document SAM 2 environment requirements separately if the official project requires a specialized environment.
 
 ==================================================
 98. WINDOWS SUPPORT
@@ -2726,18 +2726,18 @@ On startup verify:
 [✓] GPU
 [✓] OpenCV
 [✓] PySide6
-[✓] SAM 3 package
-[✓] SAM 3 checkpoint
+[✓] SAM 2 package
+[✓] SAM 2 checkpoint
 [✓] Writable project directory
 
 If a requirement is missing, show exactly what is missing.
 
 Example:
 
-SAM 3 model checkpoint not configured.
+SAM 2 model checkpoint not configured.
 
 Please select:
-Settings → SAM 3 Model → Checkpoint
+Settings → SAM 2 Model → Checkpoint
 
 ==================================================
 100. FIRST-RUN EXPERIENCE
@@ -2757,7 +2757,7 @@ Then:
 4. Select frame sampling.
 5. Extract frames.
 6. Open annotation workspace.
-7. Explain the basic SAM 3 workflow.
+7. Explain the basic SAM 2 workflow.
 
 Provide a small guided help overlay.
 
@@ -2801,7 +2801,7 @@ scooter
 
 ↓
 
-User activates SAM 3
+User activates SAM 2
 
 ↓
 
@@ -2809,7 +2809,7 @@ User clicks object
 
 ↓
 
-SAM 3 produces mask
+SAM 2 produces mask
 
 ↓
 
@@ -2821,7 +2821,7 @@ User adds negative point
 
 ↓
 
-SAM 3 refines mask
+SAM 2 refines mask
 
 ↓
 
@@ -2851,7 +2851,7 @@ Propagate Forward
 
 ↓
 
-SAM 3 propagates object
+SAM 2 propagates object
 
 ↓
 
@@ -2915,9 +2915,9 @@ B. FRAME EXTRACTION
 
 The application can extract selected frames without loading the entire video into RAM.
 
-C. SAM 3
+C. SAM 2
 
-A real SAM 3 model is loaded and performs actual segmentation.
+A real SAM 2 model is loaded and performs actual segmentation.
 
 D. PROMPTS
 
@@ -2930,7 +2930,7 @@ box/exemplar prompt
 
 E. POLYGON
 
-SAM 3 masks can be converted to editable polygons.
+SAM 2 masks can be converted to editable polygons.
 
 F. EDITING
 
@@ -2942,7 +2942,7 @@ Multiple instances per frame are supported.
 
 H. TRACKING
 
-The application supports SAM 3 video propagation where the installed SAM 3 API supports it.
+The application supports SAM 2 video propagation where the installed SAM 2 API supports it.
 
 I. PERSISTENCE
 
@@ -3003,7 +3003,7 @@ Annotation
 - object manager
 
 PHASE 4:
-SAM 3
+SAM 2
 - adapter
 - image segmentation
 - prompt processing
@@ -3017,7 +3017,7 @@ Polygon
 
 PHASE 6:
 Video propagation
-- SAM 3 video session
+- SAM 2 video session
 - tracking
 - keyframes
 - correction workflow
@@ -3064,7 +3064,7 @@ Avoid:
 - global mutable state
 - hard-coded paths
 - hard-coded GPU names
-- hard-coded SAM 3 APIs
+- hard-coded SAM 2 APIs
 - blocking UI calls
 - silent exception handling
 - duplicated coordinate-transform logic
@@ -3089,7 +3089,7 @@ fake tracking
 
 for the production workflow.
 
-A mocked SAM 3 adapter is permitted ONLY for unit testing.
+A mocked SAM 2 adapter is permitted ONLY for unit testing.
 
 ==================================================
 106. README REQUIREMENTS
@@ -3102,13 +3102,13 @@ README.md must include:
 3. System requirements
 4. Python version
 5. GPU requirements
-6. SAM 3 installation/setup
+6. SAM 2 installation/setup
 7. Checkpoint setup
 8. Installation
 9. Running the application
 10. Creating a project
 11. Extracting video frames
-12. SAM 3 annotation workflow
+12. SAM 2 annotation workflow
 13. Tracking workflow
 14. Polygon editing
 15. YOLO export
@@ -3128,7 +3128,7 @@ docs/
 ├── installation.md
 ├── user_guide.md
 ├── annotation_workflow.md
-├── sam3_setup.md
+├── sam2_setup.md
 ├── yolo_export.md
 └── troubleshooting.md
 
@@ -3148,7 +3148,7 @@ The final implementation must produce:
 8. Project schema
 9. CLI
 10. GUI application
-11. SAM 3 adapter
+11. SAM 2 adapter
 12. Video extraction pipeline
 13. Polygon editor
 14. Dataset exporter
@@ -3158,15 +3158,15 @@ The final implementation must produce:
 109. IMPORTANT IMPLEMENTATION DETAIL
 ==================================================
 
-Before writing the SAM 3 integration:
+Before writing the SAM 2 integration:
 
-INSPECT THE ACTUAL INSTALLED SAM 3 REPOSITORY AND DETERMINE THE CURRENT PUBLIC PYTHON API.
+INSPECT THE ACTUAL INSTALLED SAM 2 REPOSITORY AND DETERMINE THE CURRENT PUBLIC PYTHON API.
 
 Do not rely on outdated examples from memory.
 
 Create a small isolated integration test:
 
-tests/test_sam3_integration.py
+tests/test_sam2_integration.py
 
 which verifies:
 
@@ -3178,7 +3178,7 @@ which verifies:
 6. Mask can be converted to NumPy.
 7. Polygon extraction succeeds.
 
-Only after this test succeeds should the production UI invoke the SAM 3 adapter.
+Only after this test succeeds should the production UI invoke the SAM 2 adapter.
 
 ==================================================
 110. IMPORTANT EXPORT DETAIL
@@ -3236,7 +3236,7 @@ every 5 frames
 Then demonstrate:
 
 Frame extraction
-SAM 3 annotation
+SAM 2 annotation
 Polygon editing
 Propagation
 Export
@@ -3277,7 +3277,7 @@ Never silently discard invalid annotations.
 
 Start implementation now.
 
-First inspect the installed Python/SAM 3 environment and determine the actual SAM 3 APIs available.
+First inspect the installed Python/SAM 2 environment and determine the actual SAM 2 APIs available.
 
 Then create the project structure.
 
@@ -3285,7 +3285,7 @@ Then implement the video pipeline.
 
 Then implement the annotation canvas.
 
-Then implement the real SAM 3 adapter.
+Then implement the real SAM 2 adapter.
 
 Then implement mask-to-polygon conversion.
 

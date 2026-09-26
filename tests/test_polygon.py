@@ -3,13 +3,13 @@
 import pytest
 import numpy as np
 
-from sam3_annotator.utils.geometry import (
+from sam2_annotator.utils.geometry import (
     CoordinateTransformer, calculate_polygon_area,
     compute_bounding_box, simplify_polygon, validate_polygon
 )
-from sam3_annotator.annotation.polygon import PolygonAnnotation
-from sam3_annotator.annotation.mask_to_polygon import mask_to_polygons, polygon_to_mask
-from sam3_annotator.annotation.polygon_editor import PolygonEditor
+from sam2_annotator.annotation.polygon import PolygonAnnotation
+from sam2_annotator.annotation.mask_to_polygon import mask_to_polygons, polygon_to_mask
+from sam2_annotator.annotation.polygon_editor import PolygonEditor
 
 
 def test_coordinate_transformer():

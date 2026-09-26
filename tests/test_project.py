@@ -3,10 +3,10 @@
 import pytest
 from pathlib import Path
 
-from sam3_annotator.project.project_manager import ProjectManager
-from sam3_annotator.annotation.annotation_manager import AnnotationManager
-from sam3_annotator.annotation.polygon import PolygonAnnotation
-from sam3_annotator.video.video_reader import VideoMetadata
+from sam2_annotator.project.project_manager import ProjectManager
+from sam2_annotator.annotation.annotation_manager import AnnotationManager
+from sam2_annotator.annotation.polygon import PolygonAnnotation
+from sam2_annotator.video.video_reader import VideoMetadata
 
 
 def test_project_create_save_and_reload(tmp_path):

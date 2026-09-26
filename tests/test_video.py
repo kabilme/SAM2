@@ -5,8 +5,8 @@ import numpy as np
 import cv2
 from pathlib import Path
 
-from sam3_annotator.video.video_reader import VideoReader, VideoMetadata
-from sam3_annotator.video.frame_extractor import FrameExtractor, sanitize_filename_stem
+from sam2_annotator.video.video_reader import VideoReader, VideoMetadata
+from sam2_annotator.video.frame_extractor import FrameExtractor, sanitize_filename_stem
 
 
 @pytest.fixture

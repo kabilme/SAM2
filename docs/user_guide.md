@@ -1,4 +1,4 @@
-# User Guide: SAM3 Video Polygon Annotator
+# User Guide: SAM2 Video Polygon Annotator
 
 This document provides a comprehensive tour of the user interface, keyboard shortcuts, project management, and daily operations.
 

@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pathlib import Path
 
-from sam3_annotator.dataset.dataset_validator import DatasetValidator
+from sam2_annotator.dataset.dataset_validator import DatasetValidator
 
 
 def test_validator_on_valid_dataset(tmp_path):

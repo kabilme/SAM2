@@ -5,12 +5,12 @@ import numpy as np
 import yaml
 from pathlib import Path
 
-from sam3_annotator.project.project_schema import ClassItem
-from sam3_annotator.video.frame_extractor import FrameMetadata
-from sam3_annotator.annotation.polygon import PolygonAnnotation
-from sam3_annotator.dataset.split_manager import DatasetSplitter
-from sam3_annotator.dataset.yolo_exporter import YOLOExporter
-from sam3_annotator.utils.image_utils import save_image_bgr
+from sam2_annotator.project.project_schema import ClassItem
+from sam2_annotator.video.frame_extractor import FrameMetadata
+from sam2_annotator.annotation.polygon import PolygonAnnotation
+from sam2_annotator.dataset.split_manager import DatasetSplitter
+from sam2_annotator.dataset.yolo_exporter import YOLOExporter
+from sam2_annotator.utils.image_utils import save_image_bgr
 
 
 @pytest.fixture

@@ -6,15 +6,15 @@ import cv2
 import numpy as np
 import pytest
 
-from sam3_annotator.video.video_reader import VideoReader, VideoMetadata
-from sam3_annotator.video.frame_extractor import FrameExtractor, FrameMetadata
-from sam3_annotator.project.project_manager import ProjectManager
-from sam3_annotator.project.project_schema import ClassItem
-from sam3_annotator.annotation.annotation_manager import AnnotationManager
-from sam3_annotator.annotation.polygon import PolygonAnnotation
-from sam3_annotator.dataset.split_manager import DatasetSplitter
-from sam3_annotator.dataset.yolo_exporter import YOLOExporter
-from sam3_annotator.dataset.dataset_validator import DatasetValidator
+from sam2_annotator.video.video_reader import VideoReader, VideoMetadata
+from sam2_annotator.video.frame_extractor import FrameExtractor, FrameMetadata
+from sam2_annotator.project.project_manager import ProjectManager
+from sam2_annotator.project.project_schema import ClassItem
+from sam2_annotator.annotation.annotation_manager import AnnotationManager
+from sam2_annotator.annotation.polygon import PolygonAnnotation
+from sam2_annotator.dataset.split_manager import DatasetSplitter
+from sam2_annotator.dataset.yolo_exporter import YOLOExporter
+from sam2_annotator.dataset.dataset_validator import DatasetValidator
 
 
 def create_synthetic_video(file_path: Path, num_frames: int = 15, width: int = 320, height: int = 240, fps: float = 10.0):

@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide covers installing and setting up the **SAM3 Video Polygon Annotator** on local systems.
+This guide covers installing and setting up the **SAM2 Video Polygon Annotator** on local systems.
 
 ---
 
@@ -27,7 +27,7 @@ The application supports Python **3.10**, **3.11**, **3.12**, and **3.13**.
 
 ### Step 1: Clone or Navigate to Repository
 ```bash
-cd D:/SAM3
+cd D:/SAM2
 ```
 
 ### Step 2: Create a Virtual Environment

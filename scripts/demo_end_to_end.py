@@ -5,23 +5,23 @@ import sys
 # Ensure project root is in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sam3_annotator.video.video_reader import VideoReader
-from sam3_annotator.video.frame_extractor import FrameExtractor
-from sam3_annotator.project.project_manager import ProjectManager
-from sam3_annotator.annotation.annotation_manager import AnnotationManager
-from sam3_annotator.models.sam3_adapter import MockSAM3Adapter, SAM3LocalAdapter
-from sam3_annotator.models.sam3_image_service import SAM3ImageService
-from sam3_annotator.models.sam3_video_service import SAM3VideoService
-from sam3_annotator.annotation.polygon_editor import PolygonEditor
-from sam3_annotator.dataset.split_manager import DatasetSplitter
-from sam3_annotator.dataset.yolo_exporter import YOLOExporter
-from sam3_annotator.dataset.dataset_validator import DatasetValidator
-from sam3_annotator.utils.logging_utils import logger
+from sam2_annotator.video.video_reader import VideoReader
+from sam2_annotator.video.frame_extractor import FrameExtractor
+from sam2_annotator.project.project_manager import ProjectManager
+from sam2_annotator.annotation.annotation_manager import AnnotationManager
+from sam2_annotator.models.sam2_adapter import MockSAM2Adapter, SAM2LocalAdapter
+from sam2_annotator.models.sam2_image_service import SAM2ImageService
+from sam2_annotator.models.sam2_video_service import SAM2VideoService
+from sam2_annotator.annotation.polygon_editor import PolygonEditor
+from sam2_annotator.dataset.split_manager import DatasetSplitter
+from sam2_annotator.dataset.yolo_exporter import YOLOExporter
+from sam2_annotator.dataset.dataset_validator import DatasetValidator
+from sam2_annotator.utils.logging_utils import logger
 
 
 def main():
     print("==================================================")
-    print("SAM3 Video Polygon Annotator: End-to-End Workflow")
+    print("SAM2 Video Polygon Annotator: End-to-End Workflow")
     print("==================================================")
 
     video_path = Path("D:/BestScooter/sample_scooter.mp4")
@@ -74,11 +74,11 @@ def main():
     proj_mgr.save_project(anno_mgr)
     print(f"  - Extracted {len(extracted_frames)} frames.")
 
-    # 4. SAM 3 Annotation
-    print("\n[Step 4] Running SAM 3 Prompt Segmentation on Frame 1...")
-    adapter = MockSAM3Adapter()
+    # 4. SAM 2 Annotation
+    print("\n[Step 4] Running SAM 2 Prompt Segmentation on Frame 1...")
+    adapter = MockSAM2Adapter()
     adapter.load_model(device="cpu")
-    img_service = SAM3ImageService(adapter)
+    img_service = SAM2ImageService(adapter)
 
     frame1 = extracted_frames[0]
     img1 = proj_mgr.project_dir / "frames" / frame1.filename
@@ -95,7 +95,7 @@ def main():
         class_name="scooter",
         positive_points=center_pt,
     )
-    assert anno1 is not None, "Failed to segment object with SAM 3"
+    assert anno1 is not None, "Failed to segment object with SAM 2"
     anno_mgr.add_annotation(anno1)
     print(f"  - Generated Object: {anno1.object_id} (Class: {anno1.class_name}, Area: {anno1.area:.1f}px, Vertices: {len(anno1.points)})")
 
@@ -107,9 +107,9 @@ def main():
 
     # 6. Video Object Tracking / Propagation
     print("\n[Step 6] Propagating Object across subsequent frames...")
-    from sam3_annotator.video.frame_cache import FrameCache
+    from sam2_annotator.video.frame_cache import FrameCache
     cache = FrameCache(proj_mgr.frames_dir, proj_mgr.thumbnails_dir)
-    vid_service = SAM3VideoService(adapter, cache)
+    vid_service = SAM2VideoService(adapter, cache)
 
     target_frames = extracted_frames[1:5]
     propagated = vid_service.propagate_object(

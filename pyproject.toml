@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sam3-video-polygon-annotator"
+name = "sam2-video-polygon-annotator"
 version = "1.0.0"
-description = "Local-first application for interactive SAM 3 assisted polygon annotation on video frames and YOLOv8 instance segmentation export."
+description = "Local-first application for interactive SAM 2 assisted polygon annotation on video frames and YOLOv8 instance segmentation export."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -41,9 +41,9 @@ dev = [
 ]
 
 [project.scripts]
-sam3-annotator = "main:main"
-sam3-extract = "sam3_annotator.cli.extract_cli:main"
-sam3-export = "sam3_annotator.cli.export_cli:main"
+sam2-annotator = "main:main"
+sam2-extract = "sam2_annotator.cli.extract_cli:main"
+sam2-export = "sam2_annotator.cli.export_cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

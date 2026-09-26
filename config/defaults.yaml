@@ -1,5 +1,5 @@
 app:
-  name: SAM3 Video Polygon Annotator
+  name: SAM2 Video Polygon Annotator
   version: 1.0.0
 model:
   device: auto
