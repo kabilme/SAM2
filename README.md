@@ -1,6 +1,6 @@
 # SAM2 Video Polygon Annotator
 
-A high-performance, local-first Python desktop application for interactive **Segment Anything 2 (SAM 2 / SAM 2.1)** assisted polygon annotation on video frames and automated **YOLOv8 instance-segmentation dataset export**, inspired by modern computer-vision platforms like Roboflow.
+A high-performance, local-first Python desktop application for interactive **Segment Anything 2 (SAM 2 / SAM 2.1)** assisted polygon annotation on video frames and automated **YOLOv8 instance-segmentation dataset export**.
 
 ---
 
