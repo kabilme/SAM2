@@ -7,102 +7,117 @@ A high-performance, local-first Python desktop application for interactive **SAM
 ## Table of Contents
 
 1. [Project Overview](#1-project-overview)
-2. [Features](#2-features)
+2. [Key Features](#2-key-features)
 3. [System Requirements](#3-system-requirements)
-4. [Python Version](#4-python-version)
-5. [GPU Requirements](#5-gpu-requirements)
-6. [SAM 3 Installation & Setup](#6-sam-3-installation--setup)
-7. [Checkpoint Setup](#7-checkpoint-setup)
-8. [Installation](#8-installation)
-9. [Running the Application](#9-running-the-application)
-10. [Creating a Project](#10-creating-a-project)
-11. [Extracting Video Frames](#11-extracting-video-frames)
-12. [SAM 3 Annotation Workflow](#12-sam-3-annotation-workflow)
-13. [Tracking Workflow](#13-tracking-workflow)
-14. [Polygon Editing](#14-polygon-editing)
-15. [YOLO Export](#15-yolo-export)
-16. [Dataset Validation](#16-dataset-validation)
-17. [CLI Usage](#17-cli-usage)
-18. [Troubleshooting](#18-troubleshooting)
-19. [Project Directory Structure](#19-project-directory-structure)
-20. [License Notices](#20-license-notices)
+4. [Python Version & Dependencies](#4-python-version--dependencies)
+5. [GPU Requirements & Acceleration](#5-gpu-requirements--acceleration)
+6. [Model Architecture & Supported Checkpoints](#6-model-architecture--supported-checkpoints)
+7. [Installation Guide](#7-installation-guide)
+8. [Running the Application](#8-running-the-application)
+9. [Multi-Video Project Workflow](#9-multi-video-project-workflow)
+10. [Video Frame Sampling & Extraction](#10-video-frame-sampling--extraction)
+11. [Frame Deletion & Continuous Re-indexing](#11-frame-deletion--continuous-re-indexing)
+12. [SAM Assisted Annotation Workflow](#12-sam-assisted-annotation-workflow)
+13. [Object Tracking & Multi-Frame Propagation](#13-object-tracking--multi-frame-propagation)
+14. [Interactive Polygon Editing](#14-interactive-polygon-editing)
+15. [Null Frames & Background Negative Samples](#15-null-frames--background-negative-samples)
+16. [YOLOv8 Dataset Export](#16-yolov8-dataset-export)
+17. [Built-In Dataset Validator](#17-built-in-dataset-validator)
+18. [Headless CLI Pipelines](#18-headless-cli-pipelines)
+19. [Configuration (`defaults.yaml`)](#19-configuration-defaultsyaml)
+20. [Troubleshooting & FAQ](#20-troubleshooting--faq)
+21. [Repository Structure](#21-repository-structure)
+22. [License Notices](#22-license-notices)
 
 ---
 
 ## 1. Project Overview
 
-The **SAM3 Video Polygon Annotator** bridges the gap between raw video footage and trained YOLOv8 instance segmentation models. By utilizing zero-shot Segment Anything prompting (positive/negative points and bounding boxes), annotators can generate pixel-accurate polygon outlines in milliseconds without manual point-by-point drawing. Annotations are tracked across subsequent frames, manually refined using an interactive vertex editor, and exported directly into a validated, training-ready YOLOv8 segmentation dataset complete with `data.yaml`, images, labels, and zip packaging.
+The **SAM3 Video Polygon Annotator** bridges the gap between raw video footage and production-ready YOLOv8 instance segmentation datasets. By utilizing zero-shot Segment Anything prompting (positive/negative points and bounding boxes), annotators can generate pixel-accurate polygon outlines in milliseconds without manual point-by-point drawing.
+
+Annotations can be propagated forward across subsequent video frames using object tracking, refined using an interactive vertex editor, and exported directly into a validated YOLOv8 instance segmentation dataset complete with `data.yaml`, normalized label files, binary masks, overlay previews, and atomic ZIP packaging.
 
 ---
 
-## 2. Features
+## 2. Key Features
 
-- **Local-First & Private**: Runs entirely on your local machine; never uploads video, frames, or annotations to cloud services.
-- **Interactive Prompting**: Positive (`+`) and negative (`-`) point prompts, bounding box prompts, and manual polygon tracing.
-- **Real-Time Vectorization**: Converts raw binary masks into clean, simplified polygons using Ramer-Douglas-Peucker (RDP) contour simplification.
-- **Interactive Polygon Editor**: Click-and-drag vertex editing, edge splitting (adding vertices), vertex deletion, and boundary validation.
-- **Multi-Frame Propagation**: Forward object tracking across video frames with non-blocking background workers and cancelability.
-- **High-Performance Canvas**: Hardware-accelerated `QGraphicsView` with smooth zoom-to-cursor, pan, and real-time coordinate inspection.
-- **Timeline & Review Filtering**: Scrub through video frames with visual thumbnails and filter by status (*All*, *Unreviewed*, *Reviewed*, *Negative*).
-- **YOLOv8 Segmentation Exporter**: Generates normalized coordinates (`class_id x1 y1 x2 y2 ...`), `data.yaml`, optional binary masks, preview overlays, and ZIP archives.
-- **Built-In Dataset Validator**: Automatically verifies coordinate normalization, label-to-image parity, bounding ranges, and non-empty classes.
-- **Robust Persistence**: Atomic JSON saving with automatic backup recovery to prevent data loss.
+- **Local-First & Completely Private**: Runs entirely on your local workstation; never uploads videos, frames, or annotations to external cloud services.
+- **Multi-Video Support**: Ingest multiple video files during project creation or add additional videos to an active project at any time via **File > Add Video(s) to Project...**.
+- **Interactive Zero-Shot Prompting**: Click positive (`+`) points to segment objects, negative (`-`) points to exclude background bleed, or draw bounding boxes for rapid object isolation.
+- **Dynamic Active Model Indicator**: Displays the active segmentation model name in the main window title bar and toolbar prompt label.
+- **Contour Vectorization & Simplification**: Converts binary raster masks into simplified, organic polygons using Ramer-Douglas-Peucker (RDP) contour reduction.
+- **Interactive Polygon Vertex Editor**: Drag vertices, click polygon edges to insert new control points, right-click to delete vertices, and enforce image boundary clamping.
+- **Multi-Frame Propagation & Tracking**: Propagate object masks forward across frame sequences using non-blocking background workers with live progress and cancelability.
+- **Video Frame Deletion & Continuous Re-indexing**: Delete single frames, multiple selections, or batch empty/unreviewed frames with optional disk cleanup (images, thumbnails, annotations) and automatic re-indexing (1..N) to prevent timeline gaps.
+- **Null / Background Negative Sample Support**: Mark unannotated frames as negative background samples. YOLO exporter automatically produces empty label files (`.txt`) according to Ultralytics training best practices to drastically suppress false-positive detections.
+- **High-Performance Timeline & Canvas**: Hardware-accelerated `QGraphicsView` canvas with smooth mouse-centered zoom, panning, timeline scrubbing, and review status filtering (*All Frames*, *Unreviewed*, *Annotated*, *Reviewed*, *Null / Negative Frames*).
+- **Comprehensive YOLOv8 Exporter**: Supports Sequential (anti-leakage), Grouped, and Random dataset splits; normalized polygon coordinates (`class_id x1 y1 x2 y2 ...`); binary mask PNGs; visual preview overlays; and ZIP packaging.
+- **Automated Dataset Validator**: Verifies image-label coordinate normalization, bounding ranges $[0.0, 1.0]$, minimum vertex counts, non-empty classes, and `data.yaml` validity.
+- **Safe Persistence**: Atomic JSON file writes with automatic backup restoration (`project.backup.json`) to guarantee zero data loss.
 
 ---
 
 ## 3. System Requirements
 
 - **Operating System**: Windows 10/11 (64-bit), Linux (Ubuntu 20.04+, Debian 11+, Fedora 36+), or macOS 12+
-- **Processor**: Intel / AMD x86_64 or Apple Silicon ARM64 processor
-- **Memory**: Minimum 8 GB RAM (16 GB+ recommended for 4K video)
-- **Disk Space**: At least 3 GB for application, dependencies, and model weights
+- **Processor**: Intel Core i5 / AMD Ryzen 5 or higher (x86_64 or Apple Silicon ARM64)
+- **Memory**: Minimum 8 GB RAM (16 GB+ recommended for 4K video datasets)
+- **Storage**: At least 3 GB free disk space for application dependencies and model weights
 
 ---
 
-## 4. Python Version
+## 4. Python Version & Dependencies
 
-- Supported: **Python 3.10, 3.11, 3.12, 3.13**
-- Tested Environment: Python 3.13.5 (Win64)
-
----
-
-## 5. GPU Requirements
-
-- **NVIDIA GPU**: Recommended for real-time inference (GTX 1660, RTX 2060, RTX 3060, RTX 4070 or higher)
-- **VRAM**:
-  - Tiny (`sam2.1_t.pt`): 2-4 GB VRAM
-  - Base / Large (`sam2.1_b.pt` / `sam2.1_l.pt`): 6-8 GB+ VRAM
-- **CUDA Runtime**: CUDA 11.8 or CUDA 12.x
-- **CPU Fallback**: 100% functional on CPU for systems without dedicated GPUs.
+- **Supported Python Versions**: Python 3.10, 3.11, 3.12, 3.13
+- **Core Dependencies**:
+  - `PySide6` (GUI framework)
+  - `ultralytics` (SAM & YOLO integration)
+  - `torch`, `torchvision` (Deep learning inference engine)
+  - `opencv-python` (Video decoding and image processing)
+  - `numpy`, `pillow` (Numerical array and image transformations)
+  - `pyyaml` (Configuration management)
 
 ---
 
-## 6. SAM 3 Installation & Setup
+## 5. GPU Requirements & Acceleration
 
-The application features an isolated model adapter architecture (`sam3_annotator/models/sam3_adapter.py`). The production adapter interfaces with the official Ultralytics SAM implementation:
-
-```bash
-pip install ultralytics torch torchvision
-```
-
-The adapter automatically determines whether CUDA is available and configures device memory management and precision (`fp32` / `fp16`) accordingly.
+- **NVIDIA GPU**: Recommended for instant sub-50ms interactive segmentation (GTX 1660, RTX 2060, RTX 3060, RTX 4070 or higher).
+- **VRAM Requirements**:
+  - Tiny (`sam2.1_hiera_tiny.pt` / `sam2.1_t.pt`): 2–4 GB VRAM
+  - Large (`sam2.1_hiera_large.pt` / `sam2.1_l.pt`): 6–8 GB+ VRAM
+- **CUDA Runtime**: CUDA 11.8 or CUDA 12.x supported out of the box.
+- **CPU Fallback**: 100% functional on CPU for systems without dedicated NVIDIA GPUs.
 
 ---
 
-## 7. Checkpoint Setup
+## 6. Model Architecture & Supported Checkpoints
 
-The default lightweight checkpoint is `sam2.1_t.pt` (78 MB), which balances fast interactive latency with high boundary segmentation accuracy:
+The application uses an isolated model adapter layer (`sam3_annotator/models/sam3_adapter.py`) interfacing with the official Ultralytics SAM architecture.
+
+### Default Checkpoint
+The default model is Meta's **`sam2.1_hiera_tiny.pt`** (156 MB), offering the optimal balance between interactive frame rate and crisp object edge accuracy:
 
 ```powershell
-# Pre-download weights (or let the app auto-download on first launch)
-Invoke-WebRequest -Uri "https://github.com/ultralytics/assets/releases/download/v8.3.0/sam2.1_t.pt" -OutFile "sam2.1_t.pt"
+# Meta SAM 2.1 Hiera Tiny (Default)
+# Model will automatically be loaded if present in workspace root
 ```
 
-You can select alternate weights (`sam2.1_s.pt`, `sam2.1_b.pt`, `sam2.1_l.pt`) from the **Settings Dialog** in the UI.
+### Supported Checkpoint Types
+The adapter natively recognizes and aliases both official Meta AI checkpoints and Ultralytics release weights:
+
+| Model Checkpoint | Weights Size | Typical Speed (GPU) | Recommended Hardware |
+| :--- | :--- | :--- | :--- |
+| **`sam2.1_hiera_tiny.pt`** (Default) | ~156 MB | 15–30 ms | CPU or 4 GB GPU |
+| **`sam2.1_t.pt`** | ~78 MB | 15–25 ms | CPU or 2 GB GPU |
+| **`sam2.1_hiera_small.pt` / `sam2.1_s.pt`** | ~185 MB | 25–45 ms | 4–6 GB GPU |
+| **`sam2.1_hiera_base_plus.pt` / `sam2.1_b.pt`**| ~320 MB | 40–70 ms | 6–8 GB GPU |
+| **`sam2.1_hiera_large.pt` / `sam2.1_l.pt`** | ~449 MB | 70–120 ms | 8 GB+ GPU |
+
+You can switch models dynamically in the application via **Edit > Settings** (`Ctrl+,`) or by passing `--checkpoint-path` in the configuration.
 
 ---
 
-## 8. Installation
+## 7. Installation Guide
 
 ```bash
 # 1. Clone or navigate to the repository
@@ -110,187 +125,287 @@ cd D:/SAM3
 
 # 2. Create and activate a virtual environment
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1    # On Windows
-# source .venv/bin/activate      # On Linux/macOS
 
-# 3. Install dependencies
+# On Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
+# On Linux / macOS:
+# source .venv/bin/activate
+
+# 3. Install required dependencies
 pip install -r requirements.txt
 
-# 4. Optional: Install project in editable mode
+# 4. Optional: Install package in editable development mode
 pip install -e .
 ```
 
 ---
 
-## 9. Running the Application
+## 8. Running the Application
 
-### Launch GUI:
+### Launch Graphical Interface:
 ```bash
 python main.py
 ```
 
-### Launch GUI with a specific project or device:
+### Launch GUI with a specific project or device override:
 ```bash
-python main.py --project example_project --device cuda
+# Open an existing project on CUDA
+python main.py --project projects/my_project --device cuda
+
+# Force CPU inference
 python main.py --device cpu
 ```
 
 ---
 
-## 10. Creating a Project
+## 9. Multi-Video Project Workflow
 
-1. Launch the application and click **New Project** (`Ctrl+N`).
-2. Provide a **Project Name** and select an **Output Directory**.
-3. Select your **Input Video File** (`.mp4`, `.avi`, `.mov`, `.mkv`).
-4. Define your annotation classes (e.g. `scooter`, `person`, `helmet`).
-5. Choose your frame sampling settings (e.g. extract every 10 frames).
-6. Click **Create Project**. The video extractor runs in the background and opens the annotation workspace upon completion.
+The application supports annotating frames extracted from multiple video sources inside a single unified project:
 
----
+### 1. Creating a Multi-Video Project
+1. Press `Ctrl+N` or click **New Project**.
+2. Set **Project Name** and choose an **Output Directory** (e.g. `projects/dataset_project`).
+3. Click **Browse** next to Input Video Files and select one or multiple video files (`.mp4`, `.avi`, `.mov`, `.mkv`, `.webm`).
+4. Set extraction sampling settings (applied uniformly across all selected videos).
+5. Define your target annotation classes (e.g. `car`, `pedestrian`, `traffic_sign`).
+6. Click **Create Project**. The background worker extracts frames from each video sequentially, assigning continuous frame IDs (`#1`, `#2`, `#3`...) while preserving each frame's source video filename in metadata.
 
-## 11. Extracting Video Frames
-
-Sampling options available during project creation or via CLI:
-- **Every N frames**: Uniform subsampling (e.g. sample every 5th or 15th frame).
-- **Interval in Seconds**: Extract 1 frame per $S$ seconds of video.
-- **Fixed Count**: Uniformly distribute a target total frame count across video duration.
-- **Every Frame**: Sequential extraction of all video frames.
-
----
-
-## 12. SAM 3 Annotation Workflow
-
-1. In the **Class Panel**, select the category of the object you want to annotate.
-2. Select the **Positive Point** tool (`2` on keyboard) in the toolbar.
-3. Click on the target object in the canvas. SAM generates a binary segmentation mask.
-4. If parts of the object are missing, add additional positive points.
-5. If background areas are captured, select **Negative Point** (`3` on keyboard) and click the background region.
-6. The mask updates automatically and converts into an editable polygon.
+### 2. Adding Videos to an Existing Project
+1. Open your project.
+2. Select **File > Add Video(s) to Project...** from the menu bar.
+3. Choose one or more additional video files.
+4. Frames from the new videos are extracted in the background, appended to the existing timeline with continuous IDs, and saved into project metadata automatically.
 
 ---
 
-## 13. Tracking Workflow
+## 10. Video Frame Sampling & Extraction
+
+Frames can be sampled during project creation or via headless CLI:
+
+- **Every N Frames** (`every_n`): Uniform interval sampling (e.g., extract every 10th or 15th frame).
+- **Interval in Seconds** (`interval_seconds`): Extract 1 frame every $S$ seconds of video playback.
+- **Fixed Count** (`fixed_count`): Evenly distributes a target total number of frames across the entire video duration.
+- **Every Frame** (`every_frame`): Sequential extraction of every single frame.
+
+---
+
+## 11. Frame Deletion & Continuous Re-indexing
+
+Extracted video footage frequently contains blurry, redundant, or empty frames. The application provides dedicated frame deletion tools to keep projects clean:
+
+### How to Delete Frames:
+1. **Single Active Frame**: Press `Ctrl+Delete`, click the **Delete Frame** button in the video toolbar, or select **Edit > Delete Current Frame**.
+2. **Multiple Selected Frames**: In the Video Panel thumbnail list, hold `Ctrl` or `Shift` to select multiple frames, then press the `🗑 Delete` button.
+3. **Right-Click Context Menu**: Right-click any thumbnail and choose **Delete Selected Frame(s)...**.
+
+### Deletion Features:
+- **Confirmation Dialog**: Inspects frame ID, timestamp, source video, filename, and existing annotation count before deletion.
+- **Disk Cleanup Option**: Check **"Delete image and thumbnail files from disk"** to permanently remove the corresponding `.jpg` frame, thumbnail, and `.json` annotation files from storage.
+- **Continuous Re-indexing**: Remaining frames are automatically re-indexed continuously from `1..N` (no missing ID gaps), and all annotations and timeline positions are updated atomically.
+
+---
+
+## 12. SAM Assisted Annotation Workflow
+
+1. In the **Class Panel** (right dock), select the class label for the object.
+2. Click the **Positive Point** tool (`2` on keyboard) in the toolbar.
+3. Left-click inside the target object on the canvas. SAM generates a segmentation mask.
+4. If parts of the object are omitted, click additional positive points.
+5. If background pixels are included, select the **Negative Point** tool (`3` on keyboard) and click the background region to subtract it.
+6. Alternatively, select **Bounding Box** (`4` on keyboard) and drag a box around the object.
+7. The mask converts automatically into a simplified, editable polygon outline.
+
+---
+
+## 13. Object Tracking & Multi-Frame Propagation
 
 1. Select the completed polygon in the current frame.
 2. Click **Propagate Object** (`Ctrl+P` or toolbar icon).
-3. Select the number of forward frames to track (e.g. next 10, 30, or all frames).
-4. The background propagation worker predicts object masks on subsequent frames and creates linked annotations.
-5. Review each propagated frame and make manual adjustments if necessary.
+3. Specify the number of forward frames to track (e.g. next 10, 30, or all remaining frames).
+4. The background propagation worker tracks the object across subsequent frames, generating connected polygon annotations.
+5. Scrub through the timeline (`Left` / `Right` arrow keys) to review and refine the tracked polygons.
 
 ---
 
-## 14. Polygon Editing
+## 14. Interactive Polygon Editing
 
 Switch to **Edit Mode** (`E` on keyboard) or double-click an existing polygon:
-- **Drag Vertex**: Click and drag any vertex control handle.
-- **Add Vertex**: Click on an edge between two vertices to insert a new vertex point.
-- **Delete Vertex**: Right-click on a vertex handle and select **Delete Vertex**.
+
+- **Drag Vertices**: Left-click and drag any vertex control point.
+- **Add Vertices**: Click directly on an edge between two vertices to insert a new control point.
+- **Delete Vertices**: Right-click on a vertex handle and choose **Delete Vertex**.
 - **Delete Annotation**: Select the polygon and press `Delete` or `Backspace`.
+- **Change Class**: Right-click the polygon or change the active class in the Class Panel.
+- **Undo / Redo**: Use `Ctrl+Z` and `Ctrl+Y` to undo or redo vertex movements and deletions.
 
 ---
 
-## 15. YOLO Export
+## 15. Null Frames & Background Negative Samples
 
-1. Click **Export Dataset** (`Ctrl+E` or toolbar icon).
-2. Configure train / validation / test split ratios (default: 70% train, 20% val, 10% test).
-3. Choose split strategy:
-   - **Sequential**: Prevents temporal leakage across consecutive video frames.
-   - **Grouped**: Splits continuous segments.
-   - **Random**: Randomly distributes frames.
-4. Select optional outputs:
-   - Export binary PNG masks.
-   - Export visual preview overlays.
-   - Create dataset ZIP archive (`dataset.zip`).
-5. Click **Export**.
+In real-world object detection and instance segmentation, training models exclusively on images containing objects leads to high false-positive rates on empty backgrounds.
 
----
-
-## 16. Dataset Validation
-
-The exported dataset is validated against YOLOv8 instance segmentation requirements:
-- Matches all images with label files.
-- Ensures all polygon coordinates are normalized between $[0.0, 1.0]$.
-- Confirms polygons have at least 3 points and non-zero area.
-- Checks `data.yaml` class mapping and split counts.
-
-You can also validate any existing dataset directory using the menu (**File > Validate Dataset**) or CLI.
+### Handling Null / Background Frames:
+- **Marking Negative Frames**: Frames without objects can be marked as **Null / Negative Frame** via right-click in the timeline or Video Panel.
+- **Timeline Review Filtering**: Filter frames by status:
+  - ⚪ **Unreviewed**
+  - 🟢 **Annotated**
+  - 🔵 **Reviewed**
+  - ⬛ **Null / Negative Frame**
+- **YOLO Export Integration**: During YOLO dataset export, checking **"Export unannotated frames as null / negative frames"** copies the background images into the dataset and generates corresponding **empty `.txt` label files** (0 bytes), following official Ultralytics guidelines for negative background samples.
 
 ---
 
-## 17. CLI Usage
+## 16. YOLOv8 Dataset Export
 
-The package provides standalone CLI commands for automated headless pipelines:
+1. Click **Export Dataset** (`Ctrl+E` or **File > Export Dataset...**).
+2. Set train / validation / test split ratios (default: `70% train`, `20% val`, `10% test`).
+3. Select the split strategy:
+   - **Sequential**: Prevents temporal data leakage across adjacent video frames.
+   - **Grouped**: Splits continuous frame segments.
+   - **Random**: Randomly distributes frames across splits.
+4. Select export artifacts:
+   - **Labels**: Normalized polygon coordinates (`class_id x1 y1 x2 y2 ...`).
+   - **Null / Negative Frames**: Empty label files for background training.
+   - **Binary Masks**: 8-bit single-channel PNG masks per frame.
+   - **Preview Images**: Color-coded overlay preview images for rapid visual auditing.
+   - **Create ZIP Archive**: Automatically bundles the dataset into `dataset.zip`.
+5. Click **Start Export**.
 
-### Extract Frames:
+---
+
+## 17. Built-In Dataset Validator
+
+Every exported dataset is automatically validated upon export. You can also validate any existing dataset directory using **File > Validate Dataset...** or the CLI.
+
+The validator checks:
+- **Image-to-Label Parity**: Verifies every image has an associated label file (or is a valid empty null label).
+- **Coordinate Normalization**: Enforces that all polygon coordinates fall strictly within $[0.0, 1.0]$.
+- **Valid Polygon Topology**: Ensures polygons contain at least 3 vertices and non-zero enclosed area.
+- **Class Map Integrity**: Checks `data.yaml` class names and contiguous integer indexing.
+
+---
+
+## 18. Headless CLI Pipelines
+
+Headless CLI commands enable integration into automated video processing scripts:
+
+### 1. Extract Video Frames:
 ```bash
 python main.py --extract-frames path/to/video.mp4 --output extracted_frames --every-n 10
-# or
-python -m sam3_annotator.cli.extract_cli --video video.mp4 --output frames/ --every-n 5
+# or via CLI module with custom strategy:
+python -m sam3_annotator.cli.extract_cli --video path/to/video.mp4 --output frames/ --strategy interval_seconds --interval-seconds 0.5
 ```
 
-### Export Project to YOLO Dataset:
+### 2. Export Project to YOLO Dataset:
 ```bash
-python main.py --export path/to/project --output my_yolo_dataset
-# or
-python -m sam3_annotator.cli.export_cli --project example_project --output yolo_dataset --split-strategy sequential
+python main.py --export projects/my_project --output yolo_dataset
+# or via CLI module with custom split ratios:
+python -m sam3_annotator.cli.export_cli --project projects/my_project --output yolo_dataset --train-ratio 0.8 --val-ratio 0.15 --test-ratio 0.05 --split-strategy sequential
 ```
 
-### Validate Dataset:
+### 3. Validate Dataset:
 ```bash
-python main.py --validate-dataset path/to/dataset
+python main.py --validate-dataset yolo_dataset
 ```
 
 ---
 
-## 18. Troubleshooting
+## 19. Configuration (`defaults.yaml`)
 
-- **CUDA Out of Memory**: Switch to `fp16` precision in **Settings** or start with `--device cpu`.
-- **Corrupt Video Codec**: Re-encode video using H.264 MP4 (`ffmpeg -i input.mov -c:v libx264 output.mp4`).
-- **Logs**: Inspect detailed logs at `logs/app.log`.
+Application defaults are configured in `config/defaults.yaml`:
+
+```yaml
+app:
+  name: SAM3 Video Polygon Annotator
+  version: 1.0.0
+model:
+  device: auto
+  precision: fp32
+  checkpoint_path: sam2.1_hiera_tiny.pt
+  default_model_type: sam2.1_hiera_tiny.pt
+frame:
+  default_sampling: every_n
+  every_n: 10
+  interval_seconds: 1.0
+  fixed_count: 100
+  cache_size_limit: 100
+  jpeg_quality: 95
+  image_format: jpg
+polygon:
+  simplify_tolerance: 0.005
+  min_area: 20.0
+  morphology_cleanup: true
+  remove_duplicate_vertices: true
+dataset:
+  train_ratio: 0.7
+  val_ratio: 0.2
+  test_ratio: 0.1
+  split_strategy: sequential
+  export_masks: true
+  export_previews: true
+  create_zip: true
+ui:
+  mask_opacity: 0.45
+  vertex_radius: 5
+  line_width: 2
+  autosave_interval_seconds: 30
+  dark_theme: true
+```
+
+---
+
+## 20. Troubleshooting & FAQ
+
+- **CUDA Out of Memory**: In **Settings** (`Ctrl+,`), switch precision to `fp16` or launch with `--device cpu`.
+- **Checkpoint Not Found**: Place `sam2.1_hiera_tiny.pt` or `sam2.1_t.pt` in the project root directory, or select your downloaded checkpoint in the Settings dialog.
+- **Corrupt Video Codec**: Re-encode unsupported video formats to standard H.264 MP4 using FFmpeg:
+  ```bash
+  ffmpeg -i input.mov -c:v libx264 -crf 20 output.mp4
+  ```
+- **Application Logs**: Detailed runtime logs are saved to `logs/app.log`.
 - For more troubleshooting scenarios, consult [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ---
 
-## 19. Project Directory Structure
+## 21. Repository Structure
 
 ```
 SAM3/
-├── main.py                     <- Application entry point (CLI & GUI)
-├── requirements.txt            <- Python package dependencies
+├── main.py                     <- Unified application entry point (CLI & GUI)
+├── requirements.txt            <- Python dependencies
 ├── pyproject.toml              <- Build & packaging configuration
-├── pytest.ini                  <- Pytest configuration
-├── sam2.1_t.pt                 <- Default SAM model weights
-├── README.md                   <- Main documentation
-├── docs/                       <- Extended documentation
-│   ├── installation.md
-│   ├── user_guide.md
-│   ├── annotation_workflow.md
-│   ├── sam3_setup.md
-│   ├── yolo_export.md
-│   └── troubleshooting.md
+├── pytest.ini                  <- Automated testing configuration
+├── sam2.1_hiera_tiny.pt        <- Default SAM model checkpoint (156 MB)
+├── config/
+│   └── defaults.yaml           <- Global default configurations
+├── docs/                       <- Comprehensive guides & documentation
+│   ├── annotation_workflow.md  <- Interactive prompting & editing guide
+│   ├── installation.md         <- Detailed installation walkthrough
+│   ├── sam3_setup.md           <- SAM model configuration & benchmarks
+│   ├── troubleshooting.md      <- Common issues and recovery steps
+│   ├── user_guide.md           <- End-to-end user manual
+│   └── yolo_export.md          <- YOLOv8 export specification
 ├── sam3_annotator/             <- Main application package
-│   ├── annotation/             <- Polygon math, editing, and tracking
-│   ├── cli/                    <- Command-line interfaces
-│   ├── config/                 <- App configuration and defaults
-│   ├── dataset/                <- Splitting, YOLO exporter, and validator
-│   ├── models/                 <- SAM 3 / SAM 2 adapter layer and services
-│   ├── project/                <- Project manager and JSON schemas
-│   ├── ui/                     <- PySide6 GUI windows, canvas, and panels
-│   ├── utils/                  <- Image, geometry, and device helpers
-│   └── video/                  <- Video reader, frame extraction, and caching
+│   ├── annotation/             <- Polygon math, editing, tracking & serialization
+│   ├── cli/                    <- Standalone CLI modules (extract & export)
+│   ├── config/                 <- App configuration loader & schemas
+│   ├── dataset/                <- Splitting, YOLOv8 exporter & dataset validator
+│   ├── models/                 <- SAM 3 / SAM 2 adapter layer & services
+│   ├── project/                <- Project manager, schemas & persistence
+│   ├── ui/                     <- PySide6 GUI windows, canvas, panels & dialogs
+│   ├── utils/                  <- Image, geometry, device & logging helpers
+│   └── video/                  <- Video decoding, frame extraction & LRU caching
 ├── scripts/
-│   └── demo_end_to_end.py      <- Headless end-to-end verification script
-├── tests/                      <- Comprehensive automated test suite
-├── example_project/            <- Sample project with annotations
-└── example_dataset/            <- Exported YOLOv8 instance segmentation dataset
+│   └── demo_end_to_end.py      <- Headless verification workflow
+└── tests/                      <- Comprehensive automated test suite
 ```
 
 ---
 
-## 20. License Notices
+## 22. License Notices
 
 - **SAM3 Video Polygon Annotator**: Licensed under the MIT License.
-- **Segment Anything (SAM / SAM 2)**: Developed by Meta AI Research, licensed under the Apache 2.0 License.
+- **Segment Anything (SAM / SAM 2)**: Developed by Meta AI Research, licensed under Apache 2.0.
 - **Ultralytics YOLO**: Developed by Ultralytics, licensed under AGPL-3.0 / Enterprise.
-- **OpenCV**: Licensed under the Apache 2.0 License.
+- **OpenCV**: Licensed under Apache 2.0.
 - **PySide6**: Licensed under LGPL-3.0.
