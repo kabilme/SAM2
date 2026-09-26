@@ -134,6 +134,53 @@ class PropagationWorker(QThread):
             self.error.emit(str(e))
 
 
+# Worker for background YOLOv8 dataset export with progress bar
+class DatasetExportWorker(QThread):
+    progress = Signal(int, int, str)
+    finished = Signal(dict)
+    error = Signal(str)
+
+    def __init__(
+        self,
+        exporter: YOLOExporter,
+        split_dict: Dict[str, List[FrameMetadata]],
+        annotations_by_frame: Dict[int, List[PolygonAnnotation]],
+        export_masks: bool,
+        export_previews: bool,
+        create_zip: bool,
+        include_null_frames: bool,
+    ):
+        super().__init__()
+        self.exporter = exporter
+        self.split_dict = split_dict
+        self.annotations_by_frame = annotations_by_frame
+        self.export_masks = export_masks
+        self.export_previews = export_previews
+        self.create_zip = create_zip
+        self.include_null_frames = include_null_frames
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        try:
+            result = self.exporter.export_dataset(
+                split_dict=self.split_dict,
+                annotations_by_frame=self.annotations_by_frame,
+                export_masks=self.export_masks,
+                export_previews=self.export_previews,
+                create_zip=self.create_zip,
+                include_null_frames=self.include_null_frames,
+                progress_callback=lambda cur, tot, msg: self.progress.emit(cur, tot, msg),
+                is_cancelled=lambda: self._cancelled,
+            )
+            self.finished.emit(result)
+        except Exception as e:
+            logger.error("Dataset export worker failed: %s", e)
+            self.error.emit(str(e))
+
+
 class MainWindow(QMainWindow):
     """Main application window."""
 
@@ -990,37 +1037,53 @@ class MainWindow(QMainWindow):
                 frames_dir=self.project_manager.frames_dir,
             )
 
-            prog = ProgressDialog("Exporting YOLOv8 Dataset...", self)
+            total_frames = len(self.project_manager.frames)
+            prog_diag = ProgressDialog("Exporting YOLOv8 Dataset...", self)
+            prog_diag.set_progress(0, total_frames, "Initializing dataset export...")
 
-            def print_prog(c, t, m):
-                prog.set_progress(c, t, m)
-                QApplication.processEvents()
-
-            result = exporter.export_dataset(
+            worker = DatasetExportWorker(
+                exporter=exporter,
                 split_dict=split_dict,
                 annotations_by_frame=self.annotation_manager.frame_annotations,
                 export_masks=params["export_masks"],
                 export_previews=params["export_previews"],
                 create_zip=params["create_zip"],
                 include_null_frames=params.get("include_null_frames", True),
-                progress_callback=print_prog,
-                is_cancelled=prog.is_cancelled,
             )
-            prog.accept()
+            self.current_worker = worker
 
-            # Run automatic validator
-            validator = DatasetValidator(params["output_dir"])
-            report = validator.validate()
+            worker.progress.connect(prog_diag.set_progress)
+            prog_diag.cancelled.connect(worker.cancel)
 
-            msg = (
-                f"Dataset successfully exported to:\n{params['output_dir']}\n\n"
-                f"Total Images: {report['stats']['images_count']}\n"
-                f" - Annotated Images: {report['stats']['annotated_images_count']}\n"
-                f" - Null / Background Images: {report['stats']['null_images_count']}\n"
-                f"Total Objects: {report['stats']['objects_count']}\n\n"
-                f"Validation Status: {'PASSED' if report['valid'] else 'WARNINGS FOUND'}"
-            )
-            QMessageBox.information(self, "Export Complete", msg)
+            def on_finished(result: Dict[str, Any]):
+                prog_diag.accept()
+                if result.get("status") == "cancelled":
+                    QMessageBox.information(self, "Export Cancelled", "Dataset export was cancelled by user.")
+                    return
+
+                # Run automatic validator
+                validator = DatasetValidator(params["output_dir"])
+                report = validator.validate()
+
+                zip_info = f"\nArchive: {result.get('zip_path')}\n" if result.get("zip_path") else ""
+                msg = (
+                    f"Dataset successfully exported to:\n{params['output_dir']}\n{zip_info}\n"
+                    f"Total Images: {report['stats']['images_count']}\n"
+                    f" - Annotated Images: {report['stats']['annotated_images_count']}\n"
+                    f" - Null / Background Images: {report['stats']['null_images_count']}\n"
+                    f"Total Objects: {report['stats']['objects_count']}\n\n"
+                    f"Validation Status: {'PASSED' if report['valid'] else 'WARNINGS FOUND'}"
+                )
+                QMessageBox.information(self, "Export Complete", msg)
+
+            def on_error(err_msg: str):
+                prog_diag.reject()
+                QMessageBox.critical(self, "Export Error", f"Failed to export dataset: {err_msg}")
+
+            worker.finished.connect(on_finished)
+            worker.error.connect(on_error)
+            worker.start()
+            prog_diag.exec()
 
     def validate_dataset_dialog(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Select Dataset Directory to Validate")

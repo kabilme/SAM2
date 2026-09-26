@@ -99,3 +99,42 @@ def test_yolo_exporter(tmp_path, mock_project_env):
     assert len(tokens) == 9 # 1 class_id + 4 pairs of coords
     for v in tokens[1:]:
         assert 0.0 <= float(v) <= 1.0
+
+
+def test_dataset_export_worker(tmp_path, mock_project_env):
+    from PySide6.QtWidgets import QApplication
+    from sam2_annotator.ui.main_window import DatasetExportWorker
+
+    # Ensure QApplication exists for signal-slot processing
+    app = QApplication.instance() or QApplication([])
+
+    frames, annos, classes, frames_dir = mock_project_env
+    out_dir = tmp_path / "worker_dataset_out"
+
+    split_dict = DatasetSplitter.split_frames(frames, train_ratio=0.8, val_ratio=0.2, test_ratio=0.0)
+    exporter = YOLOExporter(output_dir=out_dir, classes=classes, frames_dir=frames_dir)
+
+    worker = DatasetExportWorker(
+        exporter=exporter,
+        split_dict=split_dict,
+        annotations_by_frame=annos,
+        export_masks=False,
+        export_previews=False,
+        create_zip=False,
+        include_null_frames=True,
+    )
+
+    progress_events = []
+    worker.progress.connect(lambda cur, tot, msg: progress_events.append((cur, tot, msg)))
+
+    finished_result = []
+    worker.finished.connect(lambda res: finished_result.append(res))
+
+    worker.start()
+    assert worker.wait(5000), "Worker did not finish in time"
+    app.processEvents()
+
+    assert len(progress_events) > 0
+    assert len(finished_result) == 1
+    assert finished_result[0]["status"] == "success"
+    assert (out_dir / "data.yaml").exists()

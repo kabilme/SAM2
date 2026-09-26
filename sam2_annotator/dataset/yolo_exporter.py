@@ -243,11 +243,16 @@ class YOLOExporter:
         # Create ZIP archive if requested
         zip_path = None
         if create_zip:
+            if progress_callback:
+                progress_callback(processed_count, total_frames, f"Creating ZIP archive ({zip_name})...")
             base_zip_name = self.output_dir.parent / Path(zip_name).stem
             archive_format = "zip"
             created_zip = shutil.make_archive(str(base_zip_name), archive_format, self.output_dir)
             zip_path = str(created_zip)
             logger.info("Created dataset archive: %s", zip_path)
+
+        if progress_callback:
+            progress_callback(processed_count, total_frames, "Dataset export complete!")
 
         summary = {
             "status": "success",
