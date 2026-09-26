@@ -1,69 +1,55 @@
-# SAM 2.1 Video Polygon Annotator
+# SAM2 Video Polygon Annotator
 
-> [!IMPORTANT]
-> **Active Model Specification**: This application exclusively uses **Meta Segment Anything 2.1 (SAM 2.1)** for all segmentation tasks (default checkpoint: `sam2.1_hiera_tiny.pt`). This project does **not** use SAM 2 (which has not been released). While the internal project repository and package name are labeled `sam2_annotator`, the actual model loaded, executed, and integrated throughout this application is **SAM 2.1**.
-
-A high-performance, local-first Python desktop application for interactive **SAM 2.1 assisted polygon annotation** on video frames and automated **YOLOv8 instance-segmentation dataset export**, inspired by modern computer-vision platforms like Roboflow.
+A high-performance, local-first Python desktop application for interactive **Segment Anything 2 (SAM 2 / SAM 2.1)** assisted polygon annotation on video frames and automated **YOLOv8 instance-segmentation dataset export**, inspired by modern computer-vision platforms like Roboflow.
 
 ---
 
 ## Table of Contents
 
 1. [Project Overview](#1-project-overview)
-2. [Actual Model Used: SAM 2.1](#2-actual-model-used-sam-21)
-3. [Key Features](#3-key-features)
-4. [System Requirements](#4-system-requirements)
-5. [Python Version & Dependencies](#5-python-version--dependencies)
-6. [GPU Requirements & Acceleration](#6-gpu-requirements--acceleration)
-7. [SAM 2.1 Architecture & Supported Checkpoints](#7-sam-21-architecture--supported-checkpoints)
-8. [Installation Guide](#8-installation-guide)
-9. [Running the Application](#9-running-the-application)
-10. [Multi-Video Project Workflow](#10-multi-video-project-workflow)
-11. [Video Frame Sampling & Extraction](#11-video-frame-sampling--extraction)
-12. [Frame Deletion & Continuous Re-indexing](#12-frame-deletion--continuous-re-indexing)
-13. [SAM 2.1 Assisted Annotation Workflow](#13-sam-21-assisted-annotation-workflow)
-14. [Object Tracking & Multi-Frame Propagation](#14-object-tracking--multi-frame-propagation)
-15. [Interactive Polygon Editing](#15-interactive-polygon-editing)
-16. [Null Frames & Background Negative Samples](#16-null-frames--background-negative-samples)
-17. [YOLOv8 Dataset Export](#17-yolov8-dataset-export)
-18. [Built-In Dataset Validator](#18-built-in-dataset-validator)
-19. [Headless CLI Pipelines](#19-headless-cli-pipelines)
-20. [Configuration (`defaults.yaml`)](#20-configuration-defaultsyaml)
-21. [Troubleshooting & FAQ](#21-troubleshooting--faq)
-22. [Repository Structure](#22-repository-structure)
-23. [License Notices](#23-license-notices)
+2. [Key Features](#2-key-features)
+3. [System Requirements](#3-system-requirements)
+4. [Python Version & Dependencies](#4-python-version--dependencies)
+5. [GPU Requirements & Acceleration](#5-gpu-requirements--acceleration)
+6. [SAM 2 Architecture & Checkpoints](#6-sam-2-architecture--checkpoints)
+7. [Installation Guide](#7-installation-guide)
+8. [Running the Application](#8-running-the-application)
+9. [Multi-Video Project Workflow](#9-multi-video-project-workflow)
+10. [Video Frame Sampling & Extraction](#10-video-frame-sampling--extraction)
+11. [Frame Deletion & Continuous Re-indexing](#11-frame-deletion--continuous-re-indexing)
+12. [SAM 2 Assisted Annotation Workflow](#12-sam-2-assisted-annotation-workflow)
+13. [Object Tracking & Multi-Frame Propagation](#13-object-tracking--multi-frame-propagation)
+14. [Interactive Polygon Editing](#14-interactive-polygon-editing)
+15. [Null Frames & Background Negative Samples](#15-null-frames--background-negative-samples)
+16. [YOLOv8 Dataset Export](#16-yolov8-dataset-export)
+17. [Built-In Dataset Validator](#17-built-in-dataset-validator)
+18. [Headless CLI Pipelines](#18-headless-cli-pipelines)
+19. [Configuration (`defaults.yaml`)](#19-configuration-defaultsyaml)
+20. [Troubleshooting & FAQ](#20-troubleshooting--faq)
+21. [Repository Structure](#21-repository-structure)
+22. [License Notices](#22-license-notices)
 
 ---
 
 ## 1. Project Overview
 
-The **SAM 2.1 Video Polygon Annotator** bridges the gap between raw video footage and production-ready YOLOv8 instance segmentation datasets. By utilizing zero-shot Segment Anything 2.1 prompting (positive/negative points and bounding boxes), annotators can generate pixel-accurate polygon outlines in milliseconds without manual point-by-point drawing.
+The **SAM2 Video Polygon Annotator** bridges the gap between raw video footage and production-ready YOLOv8 instance segmentation datasets. By utilizing zero-shot Segment Anything 2 (SAM 2 / SAM 2.1) prompting (positive/negative points and bounding boxes), annotators can generate pixel-accurate polygon outlines in milliseconds without manual point-by-point drawing.
 
-Annotations can be propagated forward across subsequent video frames using object tracking, refined using an interactive vertex editor, and exported directly into a validated YOLOv8 instance segmentation dataset complete with `data.yaml`, normalized label files, binary masks, overlay previews, and atomic ZIP packaging.
-
----
-
-## 2. Actual Model Used: SAM 2.1
-
-This project uses **Meta Segment Anything 2.1 (SAM 2.1)**. 
-
-- **No SAM 2**: Meta AI has not released a SAM 2 model. The application does not use or simulate any fictitious SAM 2 architecture.
-- **Production Engine**: The application integrates the official **SAM 2.1** architecture using PyTorch and the Ultralytics SAM engine (`sam2_annotator/models/sam2_adapter.py`).
-- **Default Checkpoint**: The project runs Meta's official **`sam2.1_hiera_tiny.pt`** (156 MB) by default, with automatic fallback support for `sam2.1_t.pt` (78 MB).
-- **Dynamic Model Title**: The application UI dynamically inspects the loaded model and displays the active checkpoint name (e.g., `sam2.1_hiera_tiny.pt`) in the window title bar and toolbar.
+Annotations can be propagated forward across subsequent video frames using multi-frame object tracking, refined using an interactive vertex editor, and exported directly into a validated YOLOv8 instance segmentation dataset complete with `data.yaml`, normalized label files, binary masks, overlay previews, and atomic ZIP packaging.
 
 ---
 
-## 3. Key Features
+## 2. Key Features
 
 - **Local-First & Completely Private**: Runs entirely on your local workstation; never uploads videos, frames, or annotations to external cloud services.
-- **SAM 2.1 Zero-Shot Segmentation**: Click positive (`+`) points to segment objects, negative (`-`) points to exclude background bleed, or draw bounding boxes for rapid object isolation.
-- **Dynamic Active Model Indicator**: Displays the active SAM 2.1 model name in the main window title bar and toolbar prompt label.
+- **Segment Anything 2 (SAM 2 / SAM 2.1) Engine**: Zero-shot interactive segmentation using Meta's official SAM 2 Hiera architecture loaded via PyTorch and the Ultralytics engine.
+- **Dynamic Active Model Indicator**: Displays the active model checkpoint name (e.g. `sam2.1_hiera_tiny.pt`) in the main window title bar and toolbar prompt label.
 - **Multi-Video Support**: Ingest multiple video files during project creation or add additional videos to an active project at any time via **File > Add Video(s) to Project...**.
+- **Interactive Zero-Shot Prompting**: Click positive (`+`) points to segment objects, negative (`-`) points to exclude background bleed, or draw bounding boxes for rapid object isolation.
 - **Contour Vectorization & Simplification**: Converts binary raster masks into simplified, organic polygons using Ramer-Douglas-Peucker (RDP) contour reduction.
 - **Interactive Polygon Vertex Editor**: Drag vertices, click polygon edges to insert new control points, right-click to delete vertices, and enforce image boundary clamping.
 - **Multi-Frame Propagation & Tracking**: Propagate object masks forward across frame sequences using non-blocking background workers with live progress and cancelability.
-- **Video Frame Deletion & Continuous Re-indexing**: Delete single frames, multiple selections, or batch empty/unreviewed frames with optional disk cleanup (images, thumbnails, annotations) and automatic re-indexing (1..N) to prevent timeline gaps.
+- **Video Frame Deletion & Continuous Re-indexing**: Delete single frames, multiple selections, or batch empty/unreviewed frames with optional disk cleanup (images, thumbnails, annotations) and automatic re-indexing (`1..N`) to prevent timeline gaps.
 - **Null / Background Negative Sample Support**: Mark unannotated frames as negative background samples. YOLO exporter automatically produces empty label files (`.txt`) according to Ultralytics training best practices to drastically suppress false-positive detections.
 - **High-Performance Timeline & Canvas**: Hardware-accelerated `QGraphicsView` canvas with smooth mouse-centered zoom, panning, timeline scrubbing, and review status filtering (*All Frames*, *Unreviewed*, *Annotated*, *Reviewed*, *Null / Negative Frames*).
 - **Comprehensive YOLOv8 Exporter**: Supports Sequential (anti-leakage), Grouped, and Random dataset splits; normalized polygon coordinates (`class_id x1 y1 x2 y2 ...`); binary mask PNGs; visual preview overlays; and ZIP packaging.
@@ -72,7 +58,7 @@ This project uses **Meta Segment Anything 2.1 (SAM 2.1)**.
 
 ---
 
-## 4. System Requirements
+## 3. System Requirements
 
 - **Operating System**: Windows 10/11 (64-bit), Linux (Ubuntu 20.04+, Debian 11+, Fedora 36+), or macOS 12+
 - **Processor**: Intel Core i5 / AMD Ryzen 5 or higher (x86_64 or Apple Silicon ARM64)
@@ -81,12 +67,12 @@ This project uses **Meta Segment Anything 2.1 (SAM 2.1)**.
 
 ---
 
-## 5. Python Version & Dependencies
+## 4. Python Version & Dependencies
 
 - **Supported Python Versions**: Python 3.10, 3.11, 3.12, 3.13
 - **Core Dependencies**:
   - `PySide6` (GUI framework)
-  - `ultralytics` (SAM 2.1 inference engine & model loader)
+  - `ultralytics` (SAM 2 inference engine & model loader)
   - `torch`, `torchvision` (Deep learning inference backend)
   - `opencv-python` (Video decoding and contour extraction)
   - `numpy`, `pillow` (Numerical array and image transformations)
@@ -94,7 +80,7 @@ This project uses **Meta Segment Anything 2.1 (SAM 2.1)**.
 
 ---
 
-## 6. GPU Requirements & Acceleration
+## 5. GPU Requirements & Acceleration
 
 - **NVIDIA GPU**: Recommended for instant sub-50ms interactive segmentation (GTX 1660, RTX 2060, RTX 3060, RTX 4070 or higher).
 - **VRAM Requirements**:
@@ -105,14 +91,14 @@ This project uses **Meta Segment Anything 2.1 (SAM 2.1)**.
 
 ---
 
-## 7. SAM 2.1 Architecture & Supported Checkpoints
+## 6. SAM 2 Architecture & Checkpoints
 
-The application uses an isolated model adapter layer (`sam2_annotator/models/sam2_adapter.py`) interfacing with the official Ultralytics SAM 2.1 implementation.
+The application utilizes an isolated adapter architecture (`sam2_annotator/models/sam2_adapter.py`) interfacing with Meta AI's official SAM 2 / SAM 2.1 Hiera models via Ultralytics.
 
 ### Default Checkpoint
 The default model is Meta's **`sam2.1_hiera_tiny.pt`** (156 MB), offering the optimal balance between interactive latency and crisp object boundary accuracy.
 
-### Supported SAM 2.1 Checkpoint Types
+### Supported Checkpoint Types
 The adapter natively recognizes and aliases both official Meta AI checkpoints and Ultralytics release weights:
 
 | Model Checkpoint | Architecture | Weights Size | Typical Speed (GPU) | Recommended Hardware |
@@ -127,11 +113,11 @@ You can switch models dynamically in the application via **Edit > Settings** (`C
 
 ---
 
-## 8. Installation Guide
+## 7. Installation Guide
 
 ```bash
 # 1. Clone or navigate to the repository
-cd D:/SAM2
+cd D:/SAM3
 
 # 2. Create and activate a virtual environment
 python -m venv .venv
@@ -150,7 +136,7 @@ pip install -e .
 
 ---
 
-## 9. Running the Application
+## 8. Running the Application
 
 ### Launch Graphical Interface:
 ```bash
@@ -168,7 +154,7 @@ python main.py --device cpu
 
 ---
 
-## 10. Multi-Video Project Workflow
+## 9. Multi-Video Project Workflow
 
 The application supports annotating frames extracted from multiple video sources inside a single unified project:
 
@@ -188,7 +174,7 @@ The application supports annotating frames extracted from multiple video sources
 
 ---
 
-## 11. Video Frame Sampling & Extraction
+## 10. Video Frame Sampling & Extraction
 
 Frames can be sampled during project creation or via headless CLI:
 
@@ -199,7 +185,7 @@ Frames can be sampled during project creation or via headless CLI:
 
 ---
 
-## 12. Frame Deletion & Continuous Re-indexing
+## 11. Frame Deletion & Continuous Re-indexing
 
 Extracted video footage frequently contains blurry, redundant, or empty frames. The application provides dedicated frame deletion tools to keep projects clean:
 
@@ -215,11 +201,11 @@ Extracted video footage frequently contains blurry, redundant, or empty frames. 
 
 ---
 
-## 13. SAM 2.1 Assisted Annotation Workflow
+## 12. SAM 2 Assisted Annotation Workflow
 
 1. In the **Class Panel** (right dock), select the class label for the object.
 2. Click the **Positive Point** tool (`2` on keyboard) in the toolbar.
-3. Left-click inside the target object on the canvas. SAM 2.1 generates a segmentation mask.
+3. Left-click inside the target object on the canvas. SAM 2 generates a segmentation mask.
 4. If parts of the object are omitted, click additional positive points.
 5. If background pixels are included, select the **Negative Point** tool (`3` on keyboard) and click the background region to subtract it.
 6. Alternatively, select **Bounding Box** (`4` on keyboard) and drag a box around the object.
@@ -227,7 +213,7 @@ Extracted video footage frequently contains blurry, redundant, or empty frames. 
 
 ---
 
-## 14. Object Tracking & Multi-Frame Propagation
+## 13. Object Tracking & Multi-Frame Propagation
 
 1. Select the completed polygon in the current frame.
 2. Click **Propagate Object** (`Ctrl+P` or toolbar icon).
@@ -237,7 +223,7 @@ Extracted video footage frequently contains blurry, redundant, or empty frames. 
 
 ---
 
-## 15. Interactive Polygon Editing
+## 14. Interactive Polygon Editing
 
 Switch to **Edit Mode** (`E` on keyboard) or double-click an existing polygon:
 
@@ -250,7 +236,7 @@ Switch to **Edit Mode** (`E` on keyboard) or double-click an existing polygon:
 
 ---
 
-## 16. Null Frames & Background Negative Samples
+## 15. Null Frames & Background Negative Samples
 
 In real-world object detection and instance segmentation, training models exclusively on images containing objects leads to high false-positive rates on empty backgrounds.
 
@@ -265,7 +251,7 @@ In real-world object detection and instance segmentation, training models exclus
 
 ---
 
-## 17. YOLOv8 Dataset Export
+## 16. YOLOv8 Dataset Export
 
 1. Click **Export Dataset** (`Ctrl+E` or **File > Export Dataset...**).
 2. Set train / validation / test split ratios (default: `70% train`, `20% val`, `10% test`).
@@ -283,7 +269,7 @@ In real-world object detection and instance segmentation, training models exclus
 
 ---
 
-## 18. Built-In Dataset Validator
+## 17. Built-In Dataset Validator
 
 Every exported dataset is automatically validated upon export. You can also validate any existing dataset directory using **File > Validate Dataset...** or the CLI.
 
@@ -295,7 +281,7 @@ The validator checks:
 
 ---
 
-## 19. Headless CLI Pipelines
+## 18. Headless CLI Pipelines
 
 Headless CLI commands enable integration into automated video processing scripts:
 
@@ -320,7 +306,7 @@ python main.py --validate-dataset yolo_dataset
 
 ---
 
-## 20. Configuration (`defaults.yaml`)
+## 19. Configuration (`defaults.yaml`)
 
 Application defaults are configured in `config/defaults.yaml`:
 
@@ -364,9 +350,8 @@ ui:
 
 ---
 
-## 21. Troubleshooting & FAQ
+## 20. Troubleshooting & FAQ
 
-- **Does this app use SAM 2?**: No. Meta has not released SAM 2. The application exclusively uses **SAM 2.1** (specifically the `sam2.1_hiera_tiny.pt` checkpoint by default).
 - **CUDA Out of Memory**: In **Settings** (`Ctrl+,`), switch precision to `fp16` or launch with `--device cpu`.
 - **Checkpoint Not Found**: Place `sam2.1_hiera_tiny.pt` or `sam2.1_t.pt` in the project root directory, or select your downloaded checkpoint in the Settings dialog.
 - **Corrupt Video Codec**: Re-encode unsupported video formats to standard H.264 MP4 using FFmpeg:
@@ -378,10 +363,10 @@ ui:
 
 ---
 
-## 22. Repository Structure
+## 21. Repository Structure
 
 ```
-SAM2/
+SAM3/
 ├── main.py                     <- Unified application entry point (CLI & GUI)
 ├── requirements.txt            <- Python dependencies
 ├── pyproject.toml              <- Build & packaging configuration
@@ -392,7 +377,7 @@ SAM2/
 ├── docs/                       <- Comprehensive guides & documentation
 │   ├── annotation_workflow.md  <- Interactive prompting & editing guide
 │   ├── installation.md         <- Detailed installation walkthrough
-│   ├── sam2_setup.md           <- SAM model configuration & benchmarks
+│   ├── sam2_setup.md           <- SAM 2 model configuration & benchmarks
 │   ├── troubleshooting.md      <- Common issues and recovery steps
 │   ├── user_guide.md           <- End-to-end user manual
 │   └── yolo_export.md          <- YOLOv8 export specification
@@ -401,7 +386,7 @@ SAM2/
 │   ├── cli/                    <- Standalone CLI modules (extract & export)
 │   ├── config/                 <- App configuration loader & schemas
 │   ├── dataset/                <- Splitting, YOLOv8 exporter & dataset validator
-│   ├── models/                 <- SAM 2.1 adapter layer & services
+│   ├── models/                 <- SAM 2 adapter layer & services
 │   ├── project/                <- Project manager, schemas & persistence
 │   ├── ui/                     <- PySide6 GUI windows, canvas, panels & dialogs
 │   ├── utils/                  <- Image, geometry, device & logging helpers
@@ -413,10 +398,10 @@ SAM2/
 
 ---
 
-## 23. License Notices
+## 22. License Notices
 
-- **SAM 2.1 Video Polygon Annotator**: Licensed under the MIT License.
-- **Segment Anything 2.1 (SAM 2.1)**: Developed by Meta AI Research, licensed under Apache 2.0.
+- **SAM2 Video Polygon Annotator**: Licensed under the MIT License.
+- **Segment Anything 2 (SAM 2 / SAM 2.1)**: Developed by Meta AI Research, licensed under Apache 2.0.
 - **Ultralytics YOLO**: Developed by Ultralytics, licensed under AGPL-3.0 / Enterprise.
 - **OpenCV**: Licensed under Apache 2.0.
 - **PySide6**: Licensed under LGPL-3.0.
