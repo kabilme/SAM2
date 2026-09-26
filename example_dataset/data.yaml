@@ -1,8 +1,0 @@
-path: .
-train: images/train
-val: images/val
-test: images/test
-names:
-  0: scooter
-  1: person
-  2: helmet
