@@ -139,7 +139,6 @@ class MainWindow(QMainWindow):
 
     def __init__(self, project_path: Optional[str] = None, device_override: Optional[str] = None):
         super().__init__()
-        self.setWindowTitle("SAM3 Video Polygon Annotator")
         self.resize(1380, 880)
 
         # Core State
@@ -151,9 +150,10 @@ class MainWindow(QMainWindow):
         self.annotation_manager = AnnotationManager()
         self.frame_cache = FrameCache(frames_dir=Path("frames"), max_size=self.config.frame.cache_size_limit)
 
-        # Initialize SAM 3 Adapter (Production or Mock for fallback)
+        # Initialize SAM Adapter (Production or Mock for fallback)
         self.sam_adapter: SAM3AdapterInterface = SAM3LocalAdapter()
         self._init_sam_model()
+        self._update_window_title()
 
         self.image_service = SAM3ImageService(self.sam_adapter)
         self.video_service = SAM3VideoService(self.sam_adapter, self.frame_cache)
@@ -170,6 +170,24 @@ class MainWindow(QMainWindow):
         # Open project if provided
         if project_path and Path(project_path).exists():
             self.open_project(Path(project_path))
+
+    def get_model_display_name(self) -> str:
+        """Return the active model name for window title and UI labels."""
+        ckpt = (
+            getattr(self.sam_adapter, "checkpoint_path", "")
+            or self.config.model.checkpoint_path
+            or self.config.model.default_model_type
+            or "sam2.1_hiera_tiny.pt"
+        )
+        return Path(ckpt).name
+
+    def _update_window_title(self) -> None:
+        """Update window title bar to mention active model name and project."""
+        model_name = self.get_model_display_name()
+        if self.project_manager.data and self.project_manager.data.project_name:
+            self.setWindowTitle(f"{model_name} Video Polygon Annotator - {self.project_manager.data.project_name}")
+        else:
+            self.setWindowTitle(f"{model_name} Video Polygon Annotator")
 
     def _init_sam_model(self) -> None:
         """Attempt to load SAM model; fallback safely to CPU or inform user."""
@@ -188,13 +206,20 @@ class MainWindow(QMainWindow):
             self.sam_adapter = MockSAM3Adapter()
             self.sam_adapter.load_model(device="cpu")
 
+        if hasattr(self, "toolbar"):
+            self.toolbar.set_model_name(self.get_model_display_name())
+        if hasattr(self, "status_sam_label"):
+            self.status_sam_label.setText(
+                f"{self.get_model_display_name()}: {'Loaded' if self.sam_adapter.is_loaded() else 'Not Loaded'}"
+            )
+
     def _setup_ui(self) -> None:
         # Central Canvas
         self.canvas = AnnotationCanvas(self)
         self.setCentralWidget(self.canvas)
 
-        # Main Toolbar
-        self.toolbar = MainToolBar(self)
+        # Main Toolbar with dynamic model name
+        self.toolbar = MainToolBar(self, model_name=self.get_model_display_name())
         self.addToolBar(Qt.TopToolBarArea, self.toolbar)
 
         # Connect toolbar mode signals
@@ -236,7 +261,7 @@ class MainWindow(QMainWindow):
         self.status_project_label = QLabel("No Project Loaded")
         self.status_frame_label = QLabel("Frame: - / -")
         self.status_objects_label = QLabel("Objects: 0")
-        self.status_sam_label = QLabel(f"SAM 3: {'Loaded' if self.sam_adapter.is_loaded() else 'Not Loaded'}")
+        self.status_sam_label = QLabel(f"{self.get_model_display_name()}: {'Loaded' if self.sam_adapter.is_loaded() else 'Not Loaded'}")
         self.status_device_label = QLabel(f"Device: {self.config.model.device.upper()}")
         self.status_save_label = QLabel("Saved")
 
@@ -558,6 +583,7 @@ class MainWindow(QMainWindow):
             self.video_panel.set_frames(self.project_manager.frames)
             self.timeline.set_frames(self.project_manager.frames)
             self.status_project_label.setText(f"Project: {self.project_manager.data.project_name}")
+            self._update_window_title()
             if self.project_manager.frames:
                 self._on_frame_selected(1)
         else:
@@ -723,7 +749,7 @@ class MainWindow(QMainWindow):
 
         masks_with_conf = self.sam_adapter.segment_with_text(img, text)
         if not masks_with_conf:
-            QMessageBox.information(self, "SAM 3 Text Prompt", f"No instances found for prompt: '{text}'")
+            QMessageBox.information(self, f"{self.get_model_display_name()} Text Prompt", f"No instances found for prompt: '{text}'")
             return
 
         active_class = self.class_panel.get_active_class()
@@ -1030,11 +1056,12 @@ class MainWindow(QMainWindow):
             self.status_device_label.setText(f"Device: {self.config.model.device.upper()}")
 
     def _show_about(self) -> None:
+        model_name = self.get_model_display_name()
         QMessageBox.about(
             self,
-            "About SAM3 Video Polygon Annotator",
-            "<h3>SAM3 Video Polygon Annotator</h3>"
-            "<p>A local-first application for interactive SAM 3 assisted polygon "
+            f"About {model_name} Video Polygon Annotator",
+            f"<h3>{model_name} Video Polygon Annotator</h3>"
+            f"<p>A local-first application for interactive {model_name} assisted polygon "
             "annotation on video frames and YOLOv8 instance segmentation export.</p>"
             "<p>Version: 1.0.0</p>"
         )

@@ -17,11 +17,18 @@ class MainToolBar(QToolBar):
     mode_changed = Signal(str)
     text_prompt_submitted = Signal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, model_name: str = "sam2.1_hiera_tiny.pt"):
         super().__init__("Main Toolbar", parent)
         self.setMovable(False)
+        self.model_name = model_name
 
         self._setup_tools()
+
+    def set_model_name(self, model_name: str) -> None:
+        """Update the prompt label with active model name."""
+        self.model_name = model_name
+        if hasattr(self, "prompt_label"):
+            self.prompt_label.setText(f"{model_name} Prompt:")
 
     def _setup_tools(self) -> None:
         # Group for exclusive mode selection
@@ -44,7 +51,8 @@ class MainToolBar(QToolBar):
         p_layout.setContentsMargins(4, 0, 4, 0)
         p_layout.setSpacing(4)
 
-        p_layout.addWidget(QLabel("SAM 3 Prompt:"))
+        self.prompt_label = QLabel(f"{self.model_name} Prompt:")
+        p_layout.addWidget(self.prompt_label)
         self.text_prompt_edit = QLineEdit()
         self.text_prompt_edit.setPlaceholderText("e.g. scooter, helmet...")
         self.text_prompt_edit.setMaximumWidth(160)
