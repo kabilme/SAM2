@@ -22,9 +22,10 @@ from sam2_annotator.video.frame_extractor import FrameExtractor, FrameMetadata
 from sam2_annotator.models.sam2_adapter import SAM2AdapterInterface, SAM2LocalAdapter, MockSAM2Adapter
 from sam2_annotator.models.sam2_image_service import SAM2ImageService
 from sam2_annotator.models.sam2_video_service import SAM2VideoService
-from sam2_annotator.dataset.split_manager import DatasetSplitter
-from sam2_annotator.dataset.yolo_exporter import YOLOExporter
-from sam2_annotator.dataset.dataset_validator import DatasetValidator
+from sam2_annotator.dataset import (
+    DatasetSplitter, DatasetValidator, YOLOExporter,
+    BaseDatasetExporter, create_exporter, EXPORT_FORMATS,
+)
 
 from sam2_annotator.ui.annotation_canvas import (
     AnnotationCanvas, MODE_SELECT, MODE_POINT_POS, MODE_POINT_NEG, MODE_BOX, MODE_POLYGON, MODE_EDIT
@@ -134,7 +135,7 @@ class PropagationWorker(QThread):
             self.error.emit(str(e))
 
 
-# Worker for background YOLOv8 dataset export with progress bar
+# Worker for background dataset and video export with progress bar
 class DatasetExportWorker(QThread):
     progress = Signal(int, int, str)
     finished = Signal(dict)
@@ -142,22 +143,19 @@ class DatasetExportWorker(QThread):
 
     def __init__(
         self,
-        exporter: YOLOExporter,
+        exporter: BaseDatasetExporter,
         split_dict: Dict[str, List[FrameMetadata]],
         annotations_by_frame: Dict[int, List[PolygonAnnotation]],
-        export_masks: bool,
-        export_previews: bool,
-        create_zip: bool,
-        include_null_frames: bool,
+        params: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ):
         super().__init__()
         self.exporter = exporter
         self.split_dict = split_dict
         self.annotations_by_frame = annotations_by_frame
-        self.export_masks = export_masks
-        self.export_previews = export_previews
-        self.create_zip = create_zip
-        self.include_null_frames = include_null_frames
+        merged_params = dict(params or {})
+        merged_params.update(kwargs)
+        self.params = merged_params
         self._cancelled = False
 
     def cancel(self):
@@ -165,13 +163,16 @@ class DatasetExportWorker(QThread):
 
     def run(self):
         try:
-            result = self.exporter.export_dataset(
+            result = self.exporter.export(
                 split_dict=self.split_dict,
                 annotations_by_frame=self.annotations_by_frame,
-                export_masks=self.export_masks,
-                export_previews=self.export_previews,
-                create_zip=self.create_zip,
-                include_null_frames=self.include_null_frames,
+                export_masks=self.params.get("export_masks", True),
+                export_previews=self.params.get("export_previews", True),
+                create_zip=self.params.get("create_zip", True),
+                include_null_frames=self.params.get("include_null_frames", True),
+                fps=self.params.get("fps", 30.0),
+                alpha=self.params.get("alpha", 0.45),
+                draw_bbox=self.params.get("draw_bbox", True),
                 progress_callback=lambda cur, tot, msg: self.progress.emit(cur, tot, msg),
                 is_cancelled=lambda: self._cancelled,
             )
@@ -1023,32 +1024,41 @@ class MainWindow(QMainWindow):
         )
         if diag.exec():
             params = diag.get_export_params()
-            split_dict = DatasetSplitter.split_frames(
-                frames=self.project_manager.frames,
-                train_ratio=params["train_ratio"],
-                val_ratio=params["val_ratio"],
-                test_ratio=params["test_ratio"],
-                strategy=params["split_strategy"],
-            )
+            format_id = params.get("format", "yolo_segmentation")
+            format_info = EXPORT_FORMATS.get(format_id, {})
 
-            exporter = YOLOExporter(
-                output_dir=params["output_dir"],
-                classes=self.project_manager.classes,
-                frames_dir=self.project_manager.frames_dir,
-            )
+            if format_info.get("supports_splits", False):
+                split_dict = DatasetSplitter.split_frames(
+                    frames=self.project_manager.frames,
+                    train_ratio=params["train_ratio"],
+                    val_ratio=params["val_ratio"],
+                    test_ratio=params["test_ratio"],
+                    strategy=params["split_strategy"],
+                )
+            else:
+                split_dict = {"all": self.project_manager.frames}
+
+            try:
+                exporter = create_exporter(
+                    format_id=format_id,
+                    output_dir=params["output_dir"],
+                    classes=self.project_manager.classes,
+                    frames_dir=self.project_manager.frames_dir,
+                )
+            except Exception as e:
+                QMessageBox.critical(self, "Export Configuration Error", str(e))
+                return
 
             total_frames = len(self.project_manager.frames)
-            prog_diag = ProgressDialog("Exporting YOLOv8 Dataset...", self)
-            prog_diag.set_progress(0, total_frames, "Initializing dataset export...")
+            title = f"Exporting {format_info.get('name', 'Dataset')}..."
+            prog_diag = ProgressDialog(title, self)
+            prog_diag.set_progress(0, total_frames, "Initializing export...")
 
             worker = DatasetExportWorker(
                 exporter=exporter,
                 split_dict=split_dict,
                 annotations_by_frame=self.annotation_manager.frame_annotations,
-                export_masks=params["export_masks"],
-                export_previews=params["export_previews"],
-                create_zip=params["create_zip"],
-                include_null_frames=params.get("include_null_frames", True),
+                params=params,
             )
             self.current_worker = worker
 
@@ -1058,27 +1068,45 @@ class MainWindow(QMainWindow):
             def on_finished(result: Dict[str, Any]):
                 prog_diag.accept()
                 if result.get("status") == "cancelled":
-                    QMessageBox.information(self, "Export Cancelled", "Dataset export was cancelled by user.")
+                    QMessageBox.information(self, "Export Cancelled", "Export was cancelled by user.")
+                    return
+                elif result.get("status") == "error":
+                    QMessageBox.critical(self, "Export Failed", result.get("error", "An unknown error occurred."))
                     return
 
-                # Run automatic validator
-                validator = DatasetValidator(params["output_dir"])
-                report = validator.validate()
+                if format_id == "rendered_video":
+                    msg = (
+                        f"Annotated video successfully exported!\n\n"
+                        f"Video File: {result.get('video_path')}\n"
+                        f"Total Frames: {result.get('total_frames')}\n"
+                        f"Resolution: {result.get('resolution')}\n"
+                        f"Playback FPS: {result.get('fps')}\n"
+                        f"Total Objects Rendered: {result.get('total_objects')}"
+                    )
+                    QMessageBox.information(self, "Video Export Complete", msg)
+                    return
+
+                # If YOLO format, run automatic dataset validator
+                valid_str = ""
+                if format_id in ("yolo_segmentation", "yolo_detection"):
+                    validator = DatasetValidator(params["output_dir"])
+                    report = validator.validate()
+                    valid_str = f"\nValidation Status: {'PASSED' if report['valid'] else 'WARNINGS FOUND'}"
 
                 zip_info = f"\nArchive: {result.get('zip_path')}\n" if result.get("zip_path") else ""
+                format_display = format_info.get("name", format_id)
                 msg = (
-                    f"Dataset successfully exported to:\n{params['output_dir']}\n{zip_info}\n"
-                    f"Total Images: {report['stats']['images_count']}\n"
-                    f" - Annotated Images: {report['stats']['annotated_images_count']}\n"
-                    f" - Null / Background Images: {report['stats']['null_images_count']}\n"
-                    f"Total Objects: {report['stats']['objects_count']}\n\n"
-                    f"Validation Status: {'PASSED' if report['valid'] else 'WARNINGS FOUND'}"
+                    f"{format_display} successfully exported to:\n{params['output_dir']}\n{zip_info}\n"
+                    f"Total Images: {result.get('total_images', total_frames)}\n"
+                    f" - Annotated Images: {result.get('annotated_images', annotated_count)}\n"
+                    f" - Null / Background Images: {result.get('null_images', 0)}\n"
+                    f"Total Objects: {result.get('total_objects', 0)}{valid_str}"
                 )
                 QMessageBox.information(self, "Export Complete", msg)
 
             def on_error(err_msg: str):
                 prog_diag.reject()
-                QMessageBox.critical(self, "Export Error", f"Failed to export dataset: {err_msg}")
+                QMessageBox.critical(self, "Export Error", f"Failed to export: {err_msg}")
 
             worker.finished.connect(on_finished)
             worker.error.connect(on_error)

@@ -25,7 +25,7 @@ The graphical interface is built with **PySide6** and optimized for dark-mode pr
 | `Ctrl+N` | Create New Project |
 | `Ctrl+O` | Open Existing Project |
 | `Ctrl+S` | Save Project (`project.json`) |
-| `Ctrl+E` | Export YOLOv8 Dataset |
+| `Ctrl+E` | Export Dataset (YOLO, COCO, VOC, LabelMe, MOT, MP4) |
 | `Right Arrow` / `D` | Advance to next frame |
 | `Left Arrow` / `A` | Return to previous frame |
 | `Space` + Drag | Pan across canvas |
@@ -59,3 +59,19 @@ my_project/
 
 ### Crash Recovery:
 If power is interrupted or the process terminates abnormally, the application detects any corrupted JSON and automatically restores state from `project.backup.json`.
+
+---
+
+## 4. Multiple Export Options
+
+Press `Ctrl+E` or choose **File > Export Dataset...** to open the unified export dialog. You can select between:
+- **YOLOv8 Instance Segmentation**: Standard polygon labels with `data.yaml` and optional binary masks / previews.
+- **YOLOv8 Object Detection**: Standard bounding box labels (`class_id cx cy w h`).
+- **COCO 1.0 JSON**: Formatted for Detectron2, MMDetection, and TorchVision.
+- **Pascal VOC & Semantic Masks**: Standard XML annotations + 8-bit indexed palette PNG masks.
+- **LabelMe JSON**: One `.json` file per frame for LabelMe GUI interoperability.
+- **MOT / MOTChallenge**: Tracking sequences with persistent track IDs in `gt.txt` and `seqinfo.ini`.
+- **Rendered Video Overlays**: Standalone MP4 video with alpha-blended polygon fills, outlines, labels, and track badges.
+
+See [docs/export_formats.md](export_formats.md) for detailed format layouts and usage instructions.
+

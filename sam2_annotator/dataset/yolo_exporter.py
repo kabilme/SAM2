@@ -16,21 +16,47 @@ from sam2_annotator.annotation.mask_to_polygon import polygon_to_mask
 from sam2_annotator.utils.geometry import CoordinateTransformer, validate_polygon
 from sam2_annotator.utils.image_utils import load_image_bgr, save_image_bgr, create_colored_mask_overlay
 from sam2_annotator.utils.logging_utils import logger
+from sam2_annotator.dataset.base_exporter import BaseDatasetExporter
 
 
-class YOLOExporter:
-    """Exports annotations and frames into Ultralytics YOLOv8 instance segmentation format."""
+class YOLOExporter(BaseDatasetExporter):
+    """Exports annotations and frames into Ultralytics YOLOv8 segmentation or detection format."""
 
     def __init__(
         self,
         output_dir: Path,
         classes: List[ClassItem],
         frames_dir: Path,
+        mode: str = "segmentation",  # "segmentation" or "detection"
     ):
-        self.output_dir = Path(output_dir).resolve()
-        self.classes = classes
-        self.frames_dir = Path(frames_dir)
-        self.class_map = {c.id: c.name for c in classes}
+        super().__init__(output_dir=output_dir, classes=classes, frames_dir=frames_dir)
+        self.mode = mode.lower()
+
+    def export(
+        self,
+        split_dict: Dict[str, List[FrameMetadata]],
+        annotations_by_frame: Dict[int, List[PolygonAnnotation]],
+        export_masks: bool = True,
+        export_previews: bool = True,
+        create_zip: bool = True,
+        include_null_frames: bool = True,
+        zip_name: str = "dataset.zip",
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Base export entry point."""
+        return self.export_dataset(
+            split_dict=split_dict,
+            annotations_by_frame=annotations_by_frame,
+            export_masks=export_masks,
+            export_previews=export_previews,
+            create_zip=create_zip,
+            include_null_frames=include_null_frames,
+            zip_name=zip_name,
+            progress_callback=progress_callback,
+            is_cancelled=is_cancelled,
+        )
 
     def export_dataset(
         self,
@@ -145,10 +171,18 @@ class YOLOExporter:
                         warnings.append(f"Frame {frame.filename} object {anno.object_id}: {err}")
                         continue
 
-                    # Normalize coordinates
-                    norm_points = transformer.image_to_normalized(anno.points)
-                    coord_strs = [f"{x:.6f} {y:.6f}" for x, y in norm_points]
-                    row = f"{anno.class_id} " + " ".join(coord_strs)
+                    # Format coordinates
+                    if self.mode == "detection":
+                        xmin, ymin, xmax, ymax, bw, bh, cx, cy = self.get_polygon_bbox(anno.points)
+                        norm_cx = max(0.0, min(1.0, cx / frame.width))
+                        norm_cy = max(0.0, min(1.0, cy / frame.height))
+                        norm_w = max(0.0, min(1.0, bw / frame.width))
+                        norm_h = max(0.0, min(1.0, bh / frame.height))
+                        row = f"{anno.class_id} {norm_cx:.6f} {norm_cy:.6f} {norm_w:.6f} {norm_h:.6f}"
+                    else:
+                        norm_points = transformer.image_to_normalized(anno.points)
+                        coord_strs = [f"{x:.6f} {y:.6f}" for x, y in norm_points]
+                        row = f"{anno.class_id} " + " ".join(coord_strs)
                     label_lines.append(row)
 
                     total_objects_exported += 1
@@ -229,8 +263,11 @@ class YOLOExporter:
 
         # Generate dataset README.md
         readme_path = self.output_dir / "README.md"
+        task_title = "YOLOv8 Object Detection Dataset" if self.mode == "detection" else "YOLOv8 Instance Segmentation Dataset"
+        train_cmd = "yolo detect train data=data.yaml model=yolov8n.pt epochs=50" if self.mode == "detection" else "yolo segment train data=data.yaml model=yolov8n-seg.pt epochs=50"
         with open(readme_path, "w", encoding="utf-8") as f:
-            f.write(f"# YOLOv8 Instance Segmentation Dataset\n\n")
+            f.write(f"# {task_title}\n\n")
+            f.write(f"- Mode: {self.mode}\n")
             f.write(f"- Total Images: {processed_count}\n")
             f.write(f"- Annotated Images (with objects): {annotated_frames_exported}\n")
             f.write(f"- Null / Background Images (0 objects): {null_frames_exported}\n")
@@ -238,7 +275,7 @@ class YOLOExporter:
             f.write(f"- Splits: {split_counts}\n")
             f.write(f"- Classes: {class_counts}\n\n")
             f.write(f"## Training with Ultralytics YOLO:\n")
-            f.write("```bash\nyolo segment train data=data.yaml model=yolov8n-seg.pt epochs=50\n```\n")
+            f.write(f"```bash\n{train_cmd}\n```\n")
 
         # Create ZIP archive if requested
         zip_path = None

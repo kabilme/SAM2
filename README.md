@@ -21,7 +21,7 @@ A high-performance, local-first Python desktop application for interactive **Seg
 13. [Object Tracking & Multi-Frame Propagation](#13-object-tracking--multi-frame-propagation)
 14. [Interactive Polygon Editing](#14-interactive-polygon-editing)
 15. [Null Frames & Background Negative Samples](#15-null-frames--background-negative-samples)
-16. [YOLOv8 Dataset Export](#16-yolov8-dataset-export)
+16. [Multiple Dataset & Video Export Formats](#16-multiple-dataset--video-export-formats)
 17. [Built-In Dataset Validator](#17-built-in-dataset-validator)
 18. [Headless CLI Pipelines](#18-headless-cli-pipelines)
 19. [Configuration (`defaults.yaml`)](#19-configuration-defaultsyaml)
@@ -52,7 +52,15 @@ Annotations can be propagated forward across subsequent video frames using multi
 - **Video Frame Deletion & Continuous Re-indexing**: Delete single frames, multiple selections, or batch empty/unreviewed frames with optional disk cleanup (images, thumbnails, annotations) and automatic re-indexing (`1..N`) to prevent timeline gaps.
 - **Null / Background Negative Sample Support**: Mark unannotated frames as negative background samples. YOLO exporter automatically produces empty label files (`.txt`) according to Ultralytics training best practices to drastically suppress false-positive detections.
 - **High-Performance Timeline & Canvas**: Hardware-accelerated `QGraphicsView` canvas with smooth mouse-centered zoom, panning, timeline scrubbing, and review status filtering (*All Frames*, *Unreviewed*, *Annotated*, *Reviewed*, *Null / Negative Frames*).
-- **Comprehensive YOLOv8 Exporter**: Supports Sequential (anti-leakage), Grouped, and Random dataset splits; normalized polygon coordinates (`class_id x1 y1 x2 y2 ...`); binary mask PNGs; visual preview overlays; and ZIP packaging.
+- **7 Industry-Standard Export Formats**: Complete multi-format exporter supporting:
+  1. **YOLOv8 Instance Segmentation** (normalized polygons + `data.yaml`)
+  2. **YOLOv8 Object Detection** (normalized bounding boxes `class_id cx cy w h` + `data.yaml`)
+  3. **COCO 1.0 JSON** (`instances_*.json` for Detectron2 / MMDetection / Hugging Face)
+  4. **Pascal VOC XML & Semantic Masks** (XML `<bndbox>` & `<polygon>` + 8-bit indexed palette PNG masks)
+  5. **LabelMe JSON** (per-image `.json` format for desktop tool interoperability)
+  6. **MOT / MOTChallenge Tracking** (`gt.txt` + `seqinfo.ini` + `img1/` sequence structure with persistent object tracking IDs)
+  7. **Rendered Video Overlays** (`.mp4` video with alpha-blended polygon fills, crisp outlines, bounding boxes, labels, and tracking badges)
+- **Live Progress Dialog & Background Threading**: Fully responsive `QThread` export worker with real-time percentage progress, processed frame counters, and cancelability.
 - **Automated Dataset Validator**: Verifies image-label coordinate normalization, bounding ranges $[0.0, 1.0]$, minimum vertex counts, non-empty classes, and `data.yaml` validity.
 - **Safe Persistence**: Atomic JSON file writes with automatic backup restoration (`project.backup.json`) to guarantee zero data loss.
 
@@ -251,21 +259,31 @@ In real-world object detection and instance segmentation, training models exclus
 
 ---
 
-## 16. YOLOv8 Dataset Export
+## 16. Multiple Dataset & Video Export Formats
 
-1. Click **Export Dataset** (`Ctrl+E` or **File > Export Dataset...**).
-2. Set train / validation / test split ratios (default: `70% train`, `20% val`, `10% test`).
-3. Select the split strategy:
-   - **Sequential**: Prevents temporal data leakage across adjacent video frames.
-   - **Grouped**: Splits continuous frame segments.
-   - **Random**: Randomly distributes frames across splits.
-4. Select export artifacts:
-   - **Labels**: Normalized polygon coordinates (`class_id x1 y1 x2 y2 ...`).
-   - **Null / Negative Frames**: Empty label files for background training.
-   - **Binary Masks**: 8-bit single-channel PNG masks per frame.
-   - **Preview Images**: Color-coded overlay preview images for rapid visual auditing.
-   - **Create ZIP Archive**: Automatically bundles the dataset into `dataset.zip`.
-5. Click **Start Export**.
+The application provides a unified export dialog (**File > Export Dataset...** or `Ctrl+E`) supporting 7 export targets:
+
+| Format | Target Use Case | Output Structure |
+| :--- | :--- | :--- |
+| **YOLOv8 Instance Segmentation** | Ultralytics YOLOv8/v9/v11-seg | Polygons (`class_id x1 y1 ...`), `data.yaml`, optional binary masks & previews |
+| **YOLOv8 Object Detection** | Ultralytics YOLOv8/v9/v11-det | Normalized bounding boxes (`class_id cx cy w h`), `data.yaml` |
+| **COCO 1.0 JSON** | Detectron2, MMDetection, Hugging Face | Standard COCO JSON (`annotations/instances_{train,val,test}.json`) |
+| **Pascal VOC & Semantic Masks** | Classic CV pipelines, Semantic Segmentation | XML `<bndbox>` & `<polygon>` tags + 8-bit palette indexed PNG masks |
+| **LabelMe JSON** | LabelMe GUI interoperability | `.json` shape files paired alongside each frame image |
+| **MOT / MOTChallenge** | Tracking evaluation (ByteTrack, DeepSORT) | Sequential `img1/`, `seqinfo.ini`, and ground-truth `gt/gt.txt` with track IDs |
+| **Rendered Video (.mp4)** | Visual presentation & demo review | MP4 video with alpha-blended polygon fills, outlines, labels, & track badges |
+
+### Exporting Steps:
+1. Open the dialog via **Export Dataset** (`Ctrl+E` or **File > Export Dataset...**).
+2. Select your desired **Export Format** from the dropdown menu.
+3. Configure format-specific options:
+   - **For Datasets**: Set train / val / test ratios and split strategy (**Sequential**, **Grouped**, or **Random**).
+   - **For YOLO**: Toggle binary masks, visual overlay previews, and null/negative background frames.
+   - **For Rendered Video**: Configure playback FPS, polygon fill alpha opacity ($0.1–0.9$), and bounding box toggles.
+   - **For Archives**: Check **Create ZIP Archive** for automatic `.zip` compression.
+4. Click **Start Export**. A non-blocking progress dialog displays live frame counts, percentage progress, and a cancel button.
+
+For complete specifications, schemas, and framework loading examples, refer to [docs/export_formats.md](docs/export_formats.md).
 
 ---
 
@@ -376,6 +394,7 @@ SAM3/
 │   └── defaults.yaml           <- Global default configurations
 ├── docs/                       <- Comprehensive guides & documentation
 │   ├── annotation_workflow.md  <- Interactive prompting & editing guide
+│   ├── export_formats.md       <- Multi-format dataset & video export specification
 │   ├── installation.md         <- Detailed installation walkthrough
 │   ├── sam2_setup.md           <- SAM 2 model configuration & benchmarks
 │   ├── troubleshooting.md      <- Common issues and recovery steps
@@ -385,7 +404,7 @@ SAM3/
 │   ├── annotation/             <- Polygon math, editing, tracking & serialization
 │   ├── cli/                    <- Standalone CLI modules (extract & export)
 │   ├── config/                 <- App configuration loader & schemas
-│   ├── dataset/                <- Splitting, YOLOv8 exporter & dataset validator
+│   ├── dataset/                <- Exporters (YOLO, COCO, VOC, LabelMe, MOT, MP4), splitter & validator
 │   ├── models/                 <- SAM 2 adapter layer & services
 │   ├── project/                <- Project manager, schemas & persistence
 │   ├── ui/                     <- PySide6 GUI windows, canvas, panels & dialogs
