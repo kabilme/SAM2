@@ -112,10 +112,10 @@ class DatasetValidator:
 
                     for line_idx, line in enumerate(lines):
                         parts = line.split()
-                        if len(parts) < 7:
+                        if len(parts) < 5:
                             report["valid"] = False
                             report["errors"].append(
-                                f"{lbl_file.name}:{line_idx + 1}: Polygon row has fewer than 6 coordinates (minimum 3 points required)."
+                                f"{lbl_file.name}:{line_idx + 1}: Row has fewer than 4 coordinates (expected bounding box [class cx cy w h] or polygon with >= 3 points)."
                             )
                             continue
 
@@ -136,7 +136,21 @@ class DatasetValidator:
                         report["stats"]["objects_count"] += 1
 
                         coords = parts[1:]
-                        if len(coords) % 2 != 0:
+
+                        # Check coordinate count:
+                        # 1. Bounding box: 4 coordinates (cx, cy, w, h)
+                        # 2. Polygon: at least 6 coordinates (3 points) and even count
+                        if len(coords) == 4:
+                            report["stats"]["box_objects_count"] = report["stats"].get("box_objects_count", 0) + 1
+                        elif len(coords) >= 6 and len(coords) % 2 == 0:
+                            report["stats"]["polygon_objects_count"] = report["stats"].get("polygon_objects_count", 0) + 1
+                        elif len(coords) < 6:
+                            report["valid"] = False
+                            report["errors"].append(
+                                f"{lbl_file.name}:{line_idx + 1}: Invalid coordinate count ({len(coords)}). Expected 4 for bounding box (cx cy w h) or at least 6 for polygon."
+                            )
+                            continue
+                        else:
                             report["valid"] = False
                             report["errors"].append(
                                 f"{lbl_file.name}:{line_idx + 1}: Odd number of coordinate values ({len(coords)})."

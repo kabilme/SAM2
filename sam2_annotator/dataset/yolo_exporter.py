@@ -248,6 +248,8 @@ class YOLOExporter(BaseDatasetExporter):
         # Generate dataset_manifest.json
         manifest_path = self.output_dir / "dataset_manifest.json"
         manifest_data = {
+            "mode": self.mode,
+            "format": f"yolo_{self.mode}",
             "generated_at": time.time(),
             "classes": [c.to_dict() for c in self.classes],
             "total_images": processed_count,
