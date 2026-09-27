@@ -408,7 +408,7 @@ class MainWindow(QMainWindow):
 
         # Dataset Menu
         data_menu = mb.addMenu("&Dataset")
-        export_act = data_menu.addAction("&Export YOLOv8 Dataset...")
+        export_act = data_menu.addAction("&Export...")
         export_act.setShortcut(QKeySequence("Ctrl+E"))
         export_act.triggered.connect(self.export_dataset_dialog)
 
