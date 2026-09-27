@@ -1086,12 +1086,14 @@ class MainWindow(QMainWindow):
                     QMessageBox.information(self, "Video Export Complete", msg)
                     return
 
-                # If YOLO format, run automatic dataset validator
+                # Run automatic validator across all export formats
                 valid_str = ""
-                if format_id in ("yolo_segmentation", "yolo_detection"):
-                    validator = DatasetValidator(params["output_dir"])
+                try:
+                    validator = DatasetValidator(params["output_dir"], format_id=format_id)
                     report = validator.validate()
-                    valid_str = f"\nValidation Status: {'PASSED' if report['valid'] else 'WARNINGS FOUND'}"
+                    valid_str = f"\nValidation Status: {'PASSED' if report['valid'] else 'WARNINGS / ERRORS FOUND'}"
+                except Exception as e:
+                    logger.warning("Automatic validation encountered an issue: %s", e)
 
                 zip_info = f"\nArchive: {result.get('zip_path')}\n" if result.get("zip_path") else ""
                 format_display = format_info.get("name", format_id)
@@ -1114,21 +1116,25 @@ class MainWindow(QMainWindow):
             prog_diag.exec()
 
     def validate_dataset_dialog(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Select Dataset Directory to Validate")
+        path = QFileDialog.getExistingDirectory(self, "Select Dataset or Artifact Directory to Validate")
         if path:
             validator = DatasetValidator(Path(path))
             report = validator.validate()
             status_str = "PASSED" if report["valid"] else "FAILED"
+            fmt_str = f"Format: {report.get('format_name', 'Unknown')}\n"
             msg = (
                 f"Validation Status: {status_str}\n\n"
-                f"Images: {report['stats']['images_count']}\n"
-                f"Labels: {report['stats']['labels_count']}\n"
-                f"Objects: {report['stats']['objects_count']}\n"
+                f"{fmt_str}"
+                f"Images / Frames: {report['stats']['images_count']}\n"
+                f"Labels / Files: {report['stats']['labels_count']}\n"
+                f"Objects / Detections: {report['stats']['objects_count']}\n"
                 f"Errors: {len(report['errors'])}\n"
                 f"Warnings: {len(report['warnings'])}\n"
             )
-            if not report["valid"]:
+            if not report["valid"] and report["errors"]:
                 msg += "\nTop Errors:\n" + "\n".join(report["errors"][:5])
+            elif report["warnings"]:
+                msg += "\nTop Warnings:\n" + "\n".join(report["warnings"][:5])
             QMessageBox.information(self, "Dataset Validation", msg)
 
     def open_settings_dialog(self) -> None:
