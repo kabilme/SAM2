@@ -45,6 +45,14 @@ sam2-annotator = "main:main"
 sam2-extract = "sam2_annotator.cli.extract_cli:main"
 sam2-export = "sam2_annotator.cli.export_cli:main"
 
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sam2_annotator*"]
+exclude = ["config*", "tests*", "docs*", "scripts*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
