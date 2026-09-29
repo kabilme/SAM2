@@ -628,8 +628,9 @@ class MainWindow(QMainWindow):
 
     def open_project(self, project_dir: Path) -> None:
         if self.project_manager.load_project(project_dir, self.annotation_manager):
-            for f in self.project_manager.frames:
-                self.annotation_manager.tracker.mark_keyframe(f.frame_id, f.is_keyframe)
+            if hasattr(self.annotation_manager, "tracker") and self.annotation_manager.tracker:
+                for f in self.project_manager.frames:
+                    self.annotation_manager.tracker.mark_keyframe(f.frame_id, f.is_keyframe)
             self.class_panel.set_classes(self.project_manager.classes)
             self.properties_panel.set_classes(self.project_manager.classes)
             self.frame_cache = FrameCache(self.project_manager.frames_dir, self.project_manager.thumbnails_dir)
@@ -686,7 +687,8 @@ class MainWindow(QMainWindow):
     def _on_keyframe_toggled(self, frame_id: int, is_keyframe: bool) -> None:
         if 0 < frame_id <= len(self.project_manager.frames):
             self.project_manager.frames[frame_id - 1].is_keyframe = is_keyframe
-        self.annotation_manager.tracker.mark_keyframe(frame_id, is_keyframe)
+        if hasattr(self.annotation_manager, "tracker") and self.annotation_manager.tracker:
+            self.annotation_manager.tracker.mark_keyframe(frame_id, is_keyframe)
         self.video_panel.apply_filter()
         self.video_panel.select_frame(frame_id)
         status_msg = f"Frame #{frame_id} marked as Keyframe ★" if is_keyframe else f"Frame #{frame_id} unmarked as Keyframe"
@@ -709,11 +711,13 @@ class MainWindow(QMainWindow):
         """Toggle keyframe status across a list of selected frames."""
         if not self.project_manager.frames:
             return
+        has_tracker = hasattr(self.annotation_manager, "tracker") and self.annotation_manager.tracker
         for fid in frame_ids:
             if 0 < fid <= len(self.project_manager.frames):
                 new_state = not self.project_manager.frames[fid - 1].is_keyframe
                 self.project_manager.frames[fid - 1].is_keyframe = new_state
-                self.annotation_manager.tracker.mark_keyframe(fid, new_state)
+                if has_tracker:
+                    self.annotation_manager.tracker.mark_keyframe(fid, new_state)
 
         cur_fid = self.annotation_manager.active_frame_id
         self.timeline.set_frames(self.project_manager.frames)

@@ -187,6 +187,8 @@ class ProjectManager:
             # Load frame annotations into annotation manager if provided
             if annotation_manager:
                 annotation_manager.frame_annotations.clear()
+                if hasattr(annotation_manager, "tracker") and annotation_manager.tracker:
+                    annotation_manager.tracker.keyframes.clear()
                 for frame in self.frames:
                     annos = AnnotationSerializer.load_frame_annotations(
                         self.annotations_dir, frame.filename

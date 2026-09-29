@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple, Any, Callable
 import copy
 
 from sam2_annotator.annotation.polygon import PolygonAnnotation
+from sam2_annotator.annotation.object_tracker import ObjectTracker
 from sam2_annotator.utils.logging_utils import logger
 
 
@@ -13,6 +14,8 @@ class AnnotationManager:
     def __init__(self, max_history: int = 50):
         # Mapping: frame_id (int) -> List[PolygonAnnotation]
         self.frame_annotations: Dict[int, List[PolygonAnnotation]] = {}
+        # Object tracking and keyframe manager
+        self.tracker = ObjectTracker()
         # History for undo/redo
         self.undo_stack: List[Dict[str, Any]] = []
         self.redo_stack: List[Dict[str, Any]] = []

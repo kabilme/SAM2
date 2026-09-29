@@ -80,3 +80,21 @@ def test_video_panel_keyframe_filter(tmp_path, sample_frames):
 
     # Should only show 2 items (frames 1 and 3)
     assert vp.list_widget.count() == 2
+
+
+def test_annotation_manager_tracker_keyframe_sync(sample_frames):
+    from sam2_annotator.annotation.annotation_manager import AnnotationManager
+
+    am = AnnotationManager()
+    assert hasattr(am, "tracker")
+    assert am.tracker is not None
+
+    # Test marking keyframes
+    am.tracker.mark_keyframe(1, True)
+    am.tracker.mark_keyframe(2, False)
+    assert am.tracker.is_keyframe(1) is True
+    assert am.tracker.is_keyframe(2) is False
+
+    am.tracker.mark_keyframe(1, False)
+    assert am.tracker.is_keyframe(1) is False
+
