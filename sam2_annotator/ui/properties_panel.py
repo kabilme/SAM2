@@ -18,7 +18,7 @@ class PropertiesPanel(QWidget):
     object_selected = Signal(str)      # object_id
     object_deleted = Signal(str)       # object_id
     object_class_changed = Signal(str, int, str) # object_id, class_id, class_name
-    propagate_requested = Signal(str, int, str)  # object_id, frame_count, mode
+    propagate_requested = Signal(str, int, str, str)  # object_id, frame_count, mode, prompt_type
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -73,6 +73,21 @@ class PropertiesPanel(QWidget):
         mode_layout.addWidget(mode_label)
         mode_layout.addWidget(self.prop_mode_combo, 1)
         prop_vlayout.addLayout(mode_layout)
+
+        # Prompt type selector
+        prompt_layout = QHBoxLayout()
+        prompt_label = QLabel("Prompt:")
+        prompt_label.setStyleSheet("color: #aaaaaa; font-weight: bold; font-size: 11px;")
+        self.prop_prompt_combo = QComboBox()
+        self.prop_prompt_combo.addItems([
+            "🔲 Box Prompt",
+            "📍 Centroid Point",
+            "🔲+📍 Box + Center Point",
+        ])
+        self.prop_prompt_combo.setToolTip("Prompt type used by SAM 2 to track and segment the object forward")
+        prompt_layout.addWidget(prompt_label)
+        prompt_layout.addWidget(self.prop_prompt_combo, 1)
+        prop_vlayout.addLayout(prompt_layout)
 
         # Frame count spinbox
         self.count_container = QWidget()
@@ -213,6 +228,16 @@ class PropertiesPanel(QWidget):
         return "fixed"
 
     @property
+    def propagation_prompt_type(self) -> str:
+        """Return the selected prompt type: 'box', 'point', or 'combined'."""
+        idx = self.prop_prompt_combo.currentIndex()
+        if idx == 1:
+            return "point"
+        elif idx == 2:
+            return "combined"
+        return "box"
+
+    @property
     def propagation_frames(self) -> int:
         """Return the selected frame count for fixed-frame propagation."""
         return self.prop_frames_spin.value()
@@ -221,6 +246,15 @@ class PropertiesPanel(QWidget):
         """Update the default frame count in the spinbox."""
         if frames > 0:
             self.prop_frames_spin.setValue(frames)
+
+    def set_default_propagation_prompt_type(self, prompt_type: str) -> None:
+        """Set the default prompt type in the dropdown."""
+        if prompt_type == "point":
+            self.prop_prompt_combo.setCurrentIndex(1)
+        elif prompt_type == "combined":
+            self.prop_prompt_combo.setCurrentIndex(2)
+        else:
+            self.prop_prompt_combo.setCurrentIndex(0)
 
     def _set_preset(self, val: int) -> None:
         self.prop_mode_combo.setCurrentIndex(0)  # Fixed Frame Count
@@ -241,7 +275,8 @@ class PropertiesPanel(QWidget):
         if self.selected_object_id:
             count = self.prop_frames_spin.value()
             mode = self.propagation_mode
-            self.propagate_requested.emit(self.selected_object_id, count, mode)
+            prompt_type = self.propagation_prompt_type
+            self.propagate_requested.emit(self.selected_object_id, count, mode, prompt_type)
 
     def _on_delete_clicked(self) -> None:
         if self.selected_object_id:

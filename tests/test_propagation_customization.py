@@ -27,13 +27,19 @@ def sample_frames():
 def test_propagation_config_loading_and_saving(tmp_path):
     cfg = AppConfig()
     assert cfg.model.propagation_frames == 30
+    assert cfg.model.propagation_prompt_type == "box"
+    assert cfg.model.propagation_box_padding == 0.08
 
     cfg.model.propagation_frames = 45
+    cfg.model.propagation_prompt_type = "box"
+    cfg.model.propagation_box_padding = 0.10
     test_yaml = tmp_path / "test_config.yaml"
     cfg.save(test_yaml)
 
     loaded = AppConfig.load(test_yaml)
     assert loaded.model.propagation_frames == 45
+    assert loaded.model.propagation_prompt_type == "box"
+    assert loaded.model.propagation_box_padding == 0.10
 
 
 def test_properties_panel_propagation_controls():
@@ -42,6 +48,7 @@ def test_properties_panel_propagation_controls():
     panel = PropertiesPanel()
     assert panel.propagation_frames == 30
     assert panel.propagation_mode == "fixed"
+    assert panel.propagation_prompt_type == "box"
     assert panel.prop_frames_spin.isEnabled() is True
 
     # Custom frame count setting
@@ -72,6 +79,12 @@ def test_properties_panel_propagation_controls():
     assert panel.propagation_mode == "fixed"
     assert panel.prop_frames_spin.isEnabled() is True
 
+    # Prompt type combo
+    panel.set_default_propagation_prompt_type("point")
+    assert panel.propagation_prompt_type == "point"
+    panel.set_default_propagation_prompt_type("box")
+    assert panel.propagation_prompt_type == "box"
+
     # Set default from config
     panel.set_default_propagation_frames(50)
     assert panel.propagation_frames == 50
@@ -93,19 +106,19 @@ def test_properties_panel_propagate_signal_emission():
     panel.prop_frames_spin.setValue(25)
 
     emitted = []
-    panel.propagate_requested.connect(lambda obj_id, cnt, mode: emitted.append((obj_id, cnt, mode)))
+    panel.propagate_requested.connect(lambda obj_id, cnt, mode, pt: emitted.append((obj_id, cnt, mode, pt)))
 
     # Trigger click
     panel.propagate_btn.click()
 
     assert len(emitted) == 1
-    assert emitted[0] == ("test-obj-123", 25, "fixed")
+    assert emitted[0] == ("test-obj-123", 25, "fixed", "box")
 
     # Change mode to Next Keyframe
     panel.prop_mode_combo.setCurrentIndex(1)
     panel.propagate_btn.click()
     assert len(emitted) == 2
-    assert emitted[1] == ("test-obj-123", 25, "next_keyframe")
+    assert emitted[1] == ("test-obj-123", 25, "next_keyframe", "box")
 
 
 def test_propagation_target_frame_calculation(sample_frames):
@@ -139,3 +152,55 @@ def test_propagation_target_frame_calculation(sample_frames):
     # 4. Until End of Video:
     target_end = sample_frames[fid : total_f]
     assert [f.frame_id for f in target_end] == [2, 3, 4, 5, 6, 7, 8]
+
+
+def test_video_service_box_prompt_propagation(tmp_path, sample_frames):
+    """Verify that SAM2VideoService uses box prompt for propagation."""
+    import numpy as np
+    import cv2
+    from sam2_annotator.models.sam2_adapter import MockSAM2Adapter
+    from sam2_annotator.models.sam2_video_service import SAM2VideoService
+    from sam2_annotator.video.frame_cache import FrameCache
+
+    frames_dir = tmp_path / "frames"
+    thumbs_dir = tmp_path / "thumbs"
+    frames_dir.mkdir()
+    thumbs_dir.mkdir()
+
+    # Create dummy images for sample frames
+    for f in sample_frames:
+        dummy_img = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.rectangle(dummy_img, (50, 50), (150, 150), (255, 255, 255), -1)
+        cv2.imwrite(str(frames_dir / f.filename), dummy_img)
+
+    frame_cache = FrameCache(frames_dir, thumbs_dir)
+    adapter = MockSAM2Adapter()
+    adapter.load_model()
+    service = SAM2VideoService(adapter, frame_cache)
+
+    initial_anno = PolygonAnnotation(
+        object_id="obj_track_test",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=0,
+        class_name="car",
+        points=[(50, 50), (150, 50), (150, 150), (50, 150)],
+        bounding_box=(50.0, 50.0, 150.0, 150.0),
+    )
+
+    # Propagate across 3 subsequent frames with box prompt
+    results = service.propagate_object(
+        initial_annotation=initial_anno,
+        target_frames=sample_frames[1:4],
+        prompt_type="box",
+        box_padding_ratio=0.08,
+    )
+
+    assert len(results) == 3
+    for r in results:
+        assert r.source == "sam2_box_track"
+        assert r.tracking_status == "tracked"
+        assert r.object_id == "obj_track_test"
+        assert r.bounding_box != (0.0, 0.0, 0.0, 0.0)
+        assert len(r.points) >= 3
+

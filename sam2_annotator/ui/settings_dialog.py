@@ -61,6 +61,20 @@ class SettingsDialog(QDialog):
         self.prop_frames_spin.setSuffix(" frames")
         m_form.addRow("Default Propagation:", self.prop_frames_spin)
 
+        # Default Propagation Prompt Type
+        self.prop_prompt_combo = QComboBox()
+        self.prop_prompt_combo.addItems(["box", "point", "combined"])
+        self.prop_prompt_combo.setCurrentText(self.config.model.propagation_prompt_type)
+        m_form.addRow("Propagation Prompt:", self.prop_prompt_combo)
+
+        # Propagation Box Padding
+        self.prop_padding_spin = QDoubleSpinBox()
+        self.prop_padding_spin.setRange(0.0, 0.30)
+        self.prop_padding_spin.setSingleStep(0.02)
+        self.prop_padding_spin.setDecimals(2)
+        self.prop_padding_spin.setValue(self.config.model.propagation_box_padding)
+        m_form.addRow("Box Padding Margin:", self.prop_padding_spin)
+
         layout.addWidget(model_group)
 
         # 2. Polygon & Geometry
@@ -126,6 +140,8 @@ class SettingsDialog(QDialog):
         self.config.model.device = self.device_combo.currentText()
         self.config.model.precision = self.precision_combo.currentText()
         self.config.model.propagation_frames = self.prop_frames_spin.value()
+        self.config.model.propagation_prompt_type = self.prop_prompt_combo.currentText()
+        self.config.model.propagation_box_padding = self.prop_padding_spin.value()
         self.config.polygon.simplify_tolerance = self.simplify_spin.value()
         self.config.polygon.min_area = self.min_area_spin.value()
         self.config.ui.mask_opacity = self.opacity_spin.value()

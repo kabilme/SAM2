@@ -16,6 +16,8 @@ class ModelConfig:
     checkpoint_path: str = "sam2.1_hiera_tiny.pt"
     default_model_type: str = "sam2.1_hiera_tiny.pt"
     propagation_frames: int = 30
+    propagation_prompt_type: str = "box"
+    propagation_box_padding: float = 0.08
 
 
 @dataclass
@@ -99,6 +101,8 @@ class AppConfig:
                     checkpoint_path=m.get("checkpoint_path", cfg.model.checkpoint_path),
                     default_model_type=m.get("default_model_type", cfg.model.default_model_type),
                     propagation_frames=int(m.get("propagation_frames", cfg.model.propagation_frames)),
+                    propagation_prompt_type=str(m.get("propagation_prompt_type", cfg.model.propagation_prompt_type)),
+                    propagation_box_padding=float(m.get("propagation_box_padding", cfg.model.propagation_box_padding)),
                 )
 
             if "frame" in data:

@@ -23,23 +23,31 @@ class SAM2VideoService:
         self,
         initial_annotation: PolygonAnnotation,
         target_frames: List[FrameMetadata],
+        prompt_type: str = "box",
+        box_padding_ratio: float = 0.08,
         simplify_tolerance: float = 0.005,
         min_area: float = 20.0,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         is_cancelled: Optional[Callable[[], bool]] = None,
     ) -> List[PolygonAnnotation]:
-        """Propagate an object polygon annotation across a sequence of target frames."""
+        """Propagate an object polygon annotation across target frames using box or point prompts."""
         propagated_annotations: List[PolygonAnnotation] = []
         total = len(target_frames)
         if total == 0:
             return propagated_annotations
 
-        # Track the last known bounding box and centroid
+        # Ensure initial bounding box is valid
         current_box = initial_annotation.bounding_box
+        if not current_box or current_box == (0.0, 0.0, 0.0, 0.0):
+            from sam2_annotator.utils.geometry import compute_bounding_box
+            current_box = compute_bounding_box(initial_annotation.points)
+
         current_centroid = calculate_polygon_centroid(initial_annotation.points)
 
-        logger.info("Starting propagation for object %s across %d frames",
-                    initial_annotation.object_id, total)
+        logger.info(
+            "Starting propagation for object %s across %d frames using prompt_type='%s' (box_padding=%.2f)",
+            initial_annotation.object_id, total, prompt_type, box_padding_ratio
+        )
 
         for step, frame_meta in enumerate(target_frames):
             if is_cancelled and is_cancelled():
@@ -50,12 +58,44 @@ class SAM2VideoService:
             if img is None:
                 continue
 
-            # Run inference using the propagated box or centroid prompt
-            mask, conf = self.adapter.segment_with_box(img, current_box)
-            if mask is None or np.count_nonzero(mask) == 0:
-                # Try center point prompt as fallback
+            h, w = img.shape[:2]
+
+            # Compute padded bounding box prompt with adaptive margin to prevent motion clipping
+            x1, y1, x2, y2 = current_box
+            bw = max(1.0, x2 - x1)
+            bh = max(1.0, y2 - y1)
+            pad_x = max(3.0, bw * box_padding_ratio)
+            pad_y = max(3.0, bh * box_padding_ratio)
+            padded_box = (
+                max(0.0, x1 - pad_x),
+                max(0.0, y1 - pad_y),
+                min(float(w), x2 + pad_x),
+                min(float(h), y2 + pad_y),
+            )
+
+            mask = None
+            conf = None
+
+            if prompt_type == "box":
+                # Primary: Bounding box prompt with adaptive margin
+                mask, conf = self.adapter.segment_with_box(img, padded_box)
+                if mask is None or np.count_nonzero(mask) == 0:
+                    # Retry with unpadded box prompt
+                    mask, conf = self.adapter.segment_with_box(img, current_box)
+                if mask is None or np.count_nonzero(mask) == 0:
+                    # Fallback to centroid point if box produced no mask
+                    if current_centroid:
+                        mask, conf = self.adapter.segment_with_points(img, [current_centroid])
+            elif prompt_type == "point":
                 if current_centroid:
                     mask, conf = self.adapter.segment_with_points(img, [current_centroid])
+                if mask is None or np.count_nonzero(mask) == 0:
+                    mask, conf = self.adapter.segment_with_box(img, padded_box)
+            else:  # "combined"
+                mask, conf = self.adapter.segment_with_box(img, padded_box)
+                if mask is None or np.count_nonzero(mask) == 0:
+                    if current_centroid:
+                        mask, conf = self.adapter.segment_with_points(img, [current_centroid])
 
             if mask is None or np.count_nonzero(mask) == 0:
                 logger.warning("Object %s lost on frame %d", initial_annotation.object_id, frame_meta.frame_id)
@@ -71,6 +111,7 @@ class SAM2VideoService:
                 continue
 
             new_points = polygons[0]
+            source_tag = "sam2_box_track" if prompt_type == "box" else ("sam2_point_track" if prompt_type == "point" else "sam2_track")
             new_anno = PolygonAnnotation(
                 object_id=initial_annotation.object_id,
                 class_id=initial_annotation.class_id,
@@ -79,9 +120,11 @@ class SAM2VideoService:
                 source_frame_index=frame_meta.source_frame_index,
                 points=new_points,
                 confidence=conf,
-                source="sam2_track",
+                source=source_tag,
                 tracking_status="tracked",
             )
+            from sam2_annotator.utils.geometry import compute_bounding_box
+            new_anno.bounding_box = compute_bounding_box(new_points)
             propagated_annotations.append(new_anno)
 
             # Update tracking anchor for next step
@@ -89,10 +132,11 @@ class SAM2VideoService:
             current_centroid = calculate_polygon_centroid(new_anno.points)
 
             if progress_callback:
+                pt_label = "Box Prompt" if prompt_type == "box" else ("Point Prompt" if prompt_type == "point" else "Combined")
                 progress_callback(
                     step + 1,
                     total,
-                    f"Propagated object to frame {frame_meta.frame_id} ({step + 1}/{total})",
+                    f"Propagated object to frame {frame_meta.frame_id} ({step + 1}/{total}) [{pt_label}]",
                 )
 
         logger.info("Propagation complete: generated %d annotations", len(propagated_annotations))

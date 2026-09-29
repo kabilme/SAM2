@@ -111,11 +111,20 @@ class PropagationWorker(QThread):
     finished = Signal(list)
     error = Signal(str)
 
-    def __init__(self, service: SAM2VideoService, initial_anno: PolygonAnnotation, target_frames: List[FrameMetadata]):
+    def __init__(
+        self,
+        service: SAM2VideoService,
+        initial_anno: PolygonAnnotation,
+        target_frames: List[FrameMetadata],
+        prompt_type: str = "box",
+        box_padding_ratio: float = 0.08,
+    ):
         super().__init__()
         self.service = service
         self.initial_anno = initial_anno
         self.target_frames = target_frames
+        self.prompt_type = prompt_type
+        self.box_padding_ratio = box_padding_ratio
         self._cancelled = False
 
     def cancel(self):
@@ -126,6 +135,8 @@ class PropagationWorker(QThread):
             results = self.service.propagate_object(
                 initial_annotation=self.initial_anno,
                 target_frames=self.target_frames,
+                prompt_type=self.prompt_type,
+                box_padding_ratio=self.box_padding_ratio,
                 progress_callback=lambda cur, tot, msg: self.progress.emit(cur, tot, msg),
                 is_cancelled=lambda: self._cancelled,
             )
@@ -289,6 +300,8 @@ class MainWindow(QMainWindow):
         self.properties_panel = PropertiesPanel(self)
         if hasattr(self.config.model, "propagation_frames"):
             self.properties_panel.set_default_propagation_frames(self.config.model.propagation_frames)
+        if hasattr(self.config.model, "propagation_prompt_type"):
+            self.properties_panel.set_default_propagation_prompt_type(self.config.model.propagation_prompt_type)
 
         self.right_dock_classes = QDockWidget("Classes", self)
         self.right_dock_classes.setWidget(self.class_panel)
@@ -892,6 +905,7 @@ class MainWindow(QMainWindow):
         object_id: str,
         frame_count: Optional[int] = None,
         mode: Optional[str] = None,
+        prompt_type: Optional[str] = None,
     ) -> None:
         fid = self.annotation_manager.active_frame_id
         anno = self.annotation_manager.get_selected_annotation(fid)
@@ -908,6 +922,10 @@ class MainWindow(QMainWindow):
             frame_count = getattr(self.properties_panel, "propagation_frames", 30)
         if mode is None:
             mode = getattr(self.properties_panel, "propagation_mode", "fixed")
+        if prompt_type is None:
+            prompt_type = getattr(self.properties_panel, "propagation_prompt_type", "box")
+
+        pad_ratio = getattr(self.config.model, "propagation_box_padding", 0.08)
 
         if mode == "end_of_video":
             target_frames = self.project_manager.frames[fid : total_f]
@@ -938,8 +956,15 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Tracking", "No subsequent frames to propagate to.")
             return
 
-        prog_diag = ProgressDialog(f"Propagating Object Tracking ({len(target_frames)} frames)...", self)
-        worker = PropagationWorker(self.video_service, anno, target_frames)
+        pt_name = "Box Prompt" if prompt_type == "box" else ("Point Prompt" if prompt_type == "point" else "Combined")
+        prog_diag = ProgressDialog(f"Propagating Object Tracking ({len(target_frames)} frames, {pt_name})...", self)
+        worker = PropagationWorker(
+            self.video_service,
+            anno,
+            target_frames,
+            prompt_type=prompt_type,
+            box_padding_ratio=pad_ratio,
+        )
         self.current_worker = worker
 
         worker.progress.connect(prog_diag.set_progress)
@@ -951,7 +976,8 @@ class MainWindow(QMainWindow):
                 self.annotation_manager.add_annotation(a)
                 self._mark_frame_status(a.frame_id, "annotated")
             self._on_annotations_updated()
-            QMessageBox.information(self, "Propagation Complete", f"Successfully propagated through {len(new_annos)} frames.")
+            self.status_bar.showMessage(f"Propagated object #{anno.object_id} using {pt_name} across {len(new_annos)} frames.", 4000)
+            QMessageBox.information(self, "Propagation Complete", f"Successfully propagated through {len(new_annos)} frames using {pt_name}.")
 
         def on_error(err: str):
             prog_diag.reject()
@@ -1243,6 +1269,8 @@ class MainWindow(QMainWindow):
             self.status_device_label.setText(f"Device: {self.config.model.device.upper()}")
             if hasattr(self.properties_panel, "set_default_propagation_frames"):
                 self.properties_panel.set_default_propagation_frames(self.config.model.propagation_frames)
+            if hasattr(self.properties_panel, "set_default_propagation_prompt_type"):
+                self.properties_panel.set_default_propagation_prompt_type(self.config.model.propagation_prompt_type)
             QMessageBox.information(self, "Settings", "Settings saved successfully.")
 
     def open_diagnostics_dialog(self) -> None:
