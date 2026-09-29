@@ -287,6 +287,8 @@ class MainWindow(QMainWindow):
         # Right Dock: Classes and Properties
         self.class_panel = ClassPanel(self)
         self.properties_panel = PropertiesPanel(self)
+        if hasattr(self.config.model, "propagation_frames"):
+            self.properties_panel.set_default_propagation_frames(self.config.model.propagation_frames)
 
         self.right_dock_classes = QDockWidget("Classes", self)
         self.right_dock_classes.setWidget(self.class_panel)
@@ -410,6 +412,10 @@ class MainWindow(QMainWindow):
         toggle_kf_act = anno_menu.addAction("&Toggle Keyframe (K)")
         toggle_kf_act.setShortcut(QKeySequence("K"))
         toggle_kf_act.triggered.connect(self._toggle_current_keyframe)
+
+        propagate_act = anno_menu.addAction("&Propagate Selected Object Forward")
+        propagate_act.setShortcut(QKeySequence("Ctrl+P"))
+        propagate_act.triggered.connect(self._on_propagate_action_triggered)
 
         # Dataset Menu
         data_menu = mb.addMenu("&Dataset")
@@ -874,22 +880,65 @@ class MainWindow(QMainWindow):
             self._mark_frame_status(fid, "annotated")
             QMessageBox.information(self, "SAM 2", f"Segmented {count} instances for '{text}'")
 
-    def _on_propagate_requested(self, object_id: str) -> None:
+    def _on_propagate_action_triggered(self) -> None:
+        """Trigger propagation from menu or shortcut for the currently selected object."""
+        if self.annotation_manager.selected_object_id:
+            self._on_propagate_requested(self.annotation_manager.selected_object_id)
+        else:
+            QMessageBox.information(self, "Propagate", "Please select an object in the active frame to propagate.")
+
+    def _on_propagate_requested(
+        self,
+        object_id: str,
+        frame_count: Optional[int] = None,
+        mode: Optional[str] = None,
+    ) -> None:
         fid = self.annotation_manager.active_frame_id
         anno = self.annotation_manager.get_selected_annotation(fid)
         if not anno:
             return
 
-        # Target frames: subsequent frames until end (or next 20 frames)
         total_f = len(self.project_manager.frames)
         if fid >= total_f:
             QMessageBox.information(self, "Tracking", "Already on last frame.")
             return
 
-        step_count = min(30, total_f - fid)
-        target_frames = self.project_manager.frames[fid : fid + step_count]
+        # Fallback to properties panel values if not passed
+        if frame_count is None:
+            frame_count = getattr(self.properties_panel, "propagation_frames", 30)
+        if mode is None:
+            mode = getattr(self.properties_panel, "propagation_mode", "fixed")
 
-        prog_diag = ProgressDialog("Propagating Object Tracking...", self)
+        if mode == "end_of_video":
+            target_frames = self.project_manager.frames[fid : total_f]
+        elif mode == "next_keyframe":
+            # Search for the next keyframe after fid
+            next_kf_idx = None
+            for idx in range(fid, total_f):
+                f_meta = self.project_manager.frames[idx]
+                if f_meta.is_keyframe or (
+                    hasattr(self.annotation_manager, "tracker")
+                    and self.annotation_manager.tracker
+                    and self.annotation_manager.tracker.is_keyframe(f_meta.frame_id)
+                ):
+                    next_kf_idx = idx
+                    break
+
+            if next_kf_idx is not None:
+                # Target frames up to the next keyframe (inclusive)
+                target_frames = self.project_manager.frames[fid : next_kf_idx + 1]
+            else:
+                target_frames = self.project_manager.frames[fid : total_f]
+                self.status_bar.showMessage("No subsequent keyframe found; propagating to end of video.", 4000)
+        else:  # "fixed"
+            step_count = min(max(1, frame_count), total_f - fid)
+            target_frames = self.project_manager.frames[fid : fid + step_count]
+
+        if not target_frames:
+            QMessageBox.information(self, "Tracking", "No subsequent frames to propagate to.")
+            return
+
+        prog_diag = ProgressDialog(f"Propagating Object Tracking ({len(target_frames)} frames)...", self)
         worker = PropagationWorker(self.video_service, anno, target_frames)
         self.current_worker = worker
 
@@ -1192,6 +1241,8 @@ class MainWindow(QMainWindow):
             cfg_path = Path("config") / "defaults.yaml"
             self.config.save(cfg_path)
             self.status_device_label.setText(f"Device: {self.config.model.device.upper()}")
+            if hasattr(self.properties_panel, "set_default_propagation_frames"):
+                self.properties_panel.set_default_propagation_frames(self.config.model.propagation_frames)
             QMessageBox.information(self, "Settings", "Settings saved successfully.")
 
     def open_diagnostics_dialog(self) -> None:

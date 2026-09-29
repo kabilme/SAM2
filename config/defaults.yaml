@@ -6,6 +6,7 @@ model:
   precision: fp32
   checkpoint_path: sam2.1_hiera_tiny.pt
   default_model_type: sam2.1_hiera_tiny.pt
+  propagation_frames: 30
 frame:
   default_sampling: every_n
   every_n: 10

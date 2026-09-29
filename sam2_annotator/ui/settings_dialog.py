@@ -54,6 +54,13 @@ class SettingsDialog(QDialog):
         self.precision_combo.setCurrentText(self.config.model.precision)
         m_form.addRow("Precision:", self.precision_combo)
 
+        # Default Propagation Frames
+        self.prop_frames_spin = QSpinBox()
+        self.prop_frames_spin.setRange(1, 1000)
+        self.prop_frames_spin.setValue(self.config.model.propagation_frames)
+        self.prop_frames_spin.setSuffix(" frames")
+        m_form.addRow("Default Propagation:", self.prop_frames_spin)
+
         layout.addWidget(model_group)
 
         # 2. Polygon & Geometry
@@ -118,6 +125,7 @@ class SettingsDialog(QDialog):
         self.config.model.checkpoint_path = self.ckpt_edit.text().strip()
         self.config.model.device = self.device_combo.currentText()
         self.config.model.precision = self.precision_combo.currentText()
+        self.config.model.propagation_frames = self.prop_frames_spin.value()
         self.config.polygon.simplify_tolerance = self.simplify_spin.value()
         self.config.polygon.min_area = self.min_area_spin.value()
         self.config.ui.mask_opacity = self.opacity_spin.value()

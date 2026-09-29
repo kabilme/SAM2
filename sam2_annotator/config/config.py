@@ -15,6 +15,7 @@ class ModelConfig:
     precision: str = "fp32"
     checkpoint_path: str = "sam2.1_hiera_tiny.pt"
     default_model_type: str = "sam2.1_hiera_tiny.pt"
+    propagation_frames: int = 30
 
 
 @dataclass
@@ -97,6 +98,7 @@ class AppConfig:
                     precision=m.get("precision", cfg.model.precision),
                     checkpoint_path=m.get("checkpoint_path", cfg.model.checkpoint_path),
                     default_model_type=m.get("default_model_type", cfg.model.default_model_type),
+                    propagation_frames=int(m.get("propagation_frames", cfg.model.propagation_frames)),
                 )
 
             if "frame" in data:
