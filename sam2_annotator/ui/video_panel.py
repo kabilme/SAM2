@@ -4,7 +4,7 @@ from typing import List, Optional
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QIcon, QPixmap, QKeyEvent
+from PySide6.QtGui import QIcon, QPixmap, QKeyEvent, QColor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QLabel, QPushButton, QComboBox, QMenu, QAbstractItemView
@@ -35,6 +35,7 @@ class VideoPanel(QWidget):
     delete_requested = Signal(list)  # list of frame_ids
     mark_null_requested = Signal(list)  # list of frame_ids
     mark_reviewed_requested = Signal(list)  # list of frame_ids
+    toggle_keyframe_requested = Signal(list)  # list of frame_ids
 
     def __init__(self, frame_cache: FrameCache, parent=None):
         super().__init__(parent)
@@ -53,6 +54,7 @@ class VideoPanel(QWidget):
         self.filter_combo = QComboBox()
         self.filter_combo.addItems([
             "All Frames",
+            "Keyframes Only",
             "Annotated Only",
             "Null / Negative Frames Only",
             "Reviewed Only",
@@ -106,7 +108,9 @@ class VideoPanel(QWidget):
 
         displayed_count = 0
         for frame in self.frames:
-            if filter_mode == "Annotated Only" and frame.review_status not in ["annotated", "reviewed"]:
+            if filter_mode == "Keyframes Only" and not frame.is_keyframe:
+                continue
+            elif filter_mode == "Annotated Only" and frame.review_status not in ["annotated", "reviewed"]:
                 continue
             elif filter_mode == "Null / Negative Frames Only" and frame.review_status != "negative":
                 continue
@@ -124,15 +128,20 @@ class VideoPanel(QWidget):
                 "rejected": "🔴",
             }.get(frame.review_status, "")
 
+            kf_prefix = "★ " if frame.is_keyframe else ""
             if frame.review_status == "negative":
-                item_label = f"⚫ [Null] #{frame.frame_id} ({frame.timestamp_seconds:.2f}s)"
+                item_label = f"{kf_prefix}⚫ [Null] #{frame.frame_id} ({frame.timestamp_seconds:.2f}s)"
             else:
-                item_label = f"{status_symbol} #{frame.frame_id} ({frame.timestamp_seconds:.2f}s)"
+                item_label = f"{kf_prefix}{status_symbol} #{frame.frame_id} ({frame.timestamp_seconds:.2f}s)"
 
             item.setText(item_label)
             item.setData(Qt.UserRole, frame.frame_id)
             tip_v = f"Video: {frame.video_name} | " if frame.video_name else ""
-            item.setToolTip(f"{tip_v}Frame #{frame.frame_id} (Source #{frame.source_frame_index}) | Status: {frame.review_status}")
+            kf_tip = " | ★ KEYFRAME REFERENCE" if frame.is_keyframe else ""
+            item.setToolTip(f"{tip_v}Frame #{frame.frame_id} (Source #{frame.source_frame_index}) | Status: {frame.review_status}{kf_tip}")
+
+            if frame.is_keyframe:
+                item.setForeground(QColor("#f59e0b"))
 
             # Load thumbnail icon
             thumb_bgr = self.frame_cache.get_thumbnail(frame.thumbnail_filename)
@@ -194,6 +203,9 @@ class VideoPanel(QWidget):
         del_act.triggered.connect(lambda: self.delete_requested.emit(selected_ids))
 
         menu.addSeparator()
+        kf_act = menu.addAction("★ Toggle Keyframe")
+        kf_act.triggered.connect(lambda: self.toggle_keyframe_requested.emit(selected_ids))
+
         null_act = menu.addAction("⚫ Mark as Null Frame (No Objects)")
         null_act.triggered.connect(lambda: self.mark_null_requested.emit(selected_ids))
 

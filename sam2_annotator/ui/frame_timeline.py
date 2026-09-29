@@ -1,13 +1,63 @@
 """Bottom timeline panel with playback controls, frame scrubbing, and keyframe markers."""
 
-from typing import List, Optional
-from PySide6.QtCore import Qt, Signal, QTimer
+from typing import List, Optional, Set
+from PySide6.QtCore import Qt, Signal, QTimer, QPoint
+from PySide6.QtGui import QPainter, QColor, QPolygon, QPen
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QSlider,
-    QLabel, QSpinBox
+    QLabel, QSpinBox, QStyle, QStyleOptionSlider
 )
 
 from sam2_annotator.video.frame_extractor import FrameMetadata
+
+
+class KeyframeTimelineSlider(QSlider):
+    """Horizontal slider that paints golden diamond markers at keyframe positions."""
+
+    def __init__(self, orientation=Qt.Horizontal, parent=None):
+        super().__init__(orientation, parent)
+        self.keyframe_indices: Set[int] = set()
+
+    def set_keyframes(self, keyframe_indices: Set[int]) -> None:
+        self.keyframe_indices = set(keyframe_indices)
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self.keyframe_indices or self.maximum() <= self.minimum():
+            return
+
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+
+        handle = self.style().subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, self)
+        half_handle = handle.width() // 2 if handle.isValid() else 8
+        track_left = half_handle
+        track_width = max(1, self.width() - 2 * half_handle)
+
+        min_val = self.minimum()
+        max_val = self.maximum()
+        span = max_val - min_val
+        if span <= 0:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QColor("#f59e0b"))
+        painter.setPen(QPen(QColor("#ffffff"), 1))
+
+        y = self.height() // 2
+
+        for kf in self.keyframe_indices:
+            if min_val <= kf <= max_val:
+                x = int(track_left + (kf - min_val) / float(span) * track_width)
+                diamond = QPolygon([
+                    QPoint(x, y - 6),
+                    QPoint(x + 5, y),
+                    QPoint(x, y + 6),
+                    QPoint(x - 5, y),
+                ])
+                painter.drawPolygon(diamond)
 
 
 class FrameTimeline(QWidget):
@@ -41,7 +91,7 @@ class FrameTimeline(QWidget):
         self.time_label.setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold;")
         slider_layout.addWidget(self.time_label)
 
-        self.slider = QSlider(Qt.Horizontal)
+        self.slider = KeyframeTimelineSlider(Qt.Horizontal)
         self.slider.setRange(1, 1)
         self.slider.setValue(1)
         self.slider.valueChanged.connect(self._on_slider_moved)
@@ -86,8 +136,10 @@ class FrameTimeline(QWidget):
 
         ctrl_layout.addSpacing(15)
 
-        self.keyframe_btn = QPushButton("★ Keyframe")
+        self.keyframe_btn = QPushButton("☆ Keyframe")
         self.keyframe_btn.setCheckable(True)
+        self.keyframe_btn.setToolTip("Mark/unmark current frame as Keyframe reference (Shortcut: K)")
+        self._update_keyframe_btn_style(False)
         self.keyframe_btn.clicked.connect(self._on_keyframe_clicked)
         ctrl_layout.addWidget(self.keyframe_btn)
 
@@ -112,9 +164,50 @@ class FrameTimeline(QWidget):
 
         main_layout.addLayout(ctrl_layout)
 
+    def _update_keyframe_btn_style(self, is_checked: bool) -> None:
+        """Update button text and stylesheet based on active keyframe state."""
+        if is_checked:
+            self.keyframe_btn.setText("★ Keyframe [ON]")
+            self.keyframe_btn.setStyleSheet(
+                "QPushButton {"
+                "  background-color: #f59e0b;"
+                "  color: #111827;"
+                "  font-weight: bold;"
+                "  border: 1px solid #d97706;"
+                "  border-radius: 4px;"
+                "  padding: 4px 10px;"
+                "}"
+                "QPushButton:hover {"
+                "  background-color: #fbbf24;"
+                "  color: #000000;"
+                "}"
+            )
+        else:
+            self.keyframe_btn.setText("☆ Keyframe")
+            self.keyframe_btn.setStyleSheet(
+                "QPushButton {"
+                "  background-color: #2b2b2b;"
+                "  color: #cccccc;"
+                "  border: 1px solid #444444;"
+                "  border-radius: 4px;"
+                "  padding: 4px 10px;"
+                "}"
+                "QPushButton:hover {"
+                "  background-color: #383838;"
+                "  color: #ffffff;"
+                "  border-color: #f59e0b;"
+                "}"
+            )
+
+    def _update_slider_keyframes(self) -> None:
+        """Refresh keyframe marker positions on the timeline slider."""
+        kf_set = {f.frame_id for f in self.frames if f.is_keyframe}
+        self.slider.set_keyframes(kf_set)
+
     def set_frames(self, frames: List[FrameMetadata]) -> None:
         self.frames = frames
         total = len(frames)
+        self._update_slider_keyframes()
         if total > 0:
             self.slider.blockSignals(True)
             self.frame_spin.blockSignals(True)
@@ -157,17 +250,26 @@ class FrameTimeline(QWidget):
 
         current_meta = self.frames[frame_id - 1]
         self.time_label.setText(self._format_time(current_meta.timestamp_seconds))
-        self.keyframe_btn.setChecked(current_meta.is_keyframe)
 
+        # Update keyframe toggle state & appearance
+        self.keyframe_btn.blockSignals(True)
+        self.keyframe_btn.setChecked(current_meta.is_keyframe)
+        self._update_keyframe_btn_style(current_meta.is_keyframe)
+        self.keyframe_btn.blockSignals(False)
+
+        # Update status badge with keyframe indicator
+        kf_suffix = " | ★ Keyframe" if current_meta.is_keyframe else ""
         if current_meta.review_status == "negative":
-            self.status_badge.setText("Status: ⚫ Null Frame (No Objects)")
+            self.status_badge.setText(f"Status: ⚫ Null Frame (No Objects){kf_suffix}")
             self.status_badge.setStyleSheet("color: #ffb74d; font-weight: bold;")
         elif current_meta.review_status in ["annotated", "reviewed"]:
-            self.status_badge.setText(f"Status: 🟢 {current_meta.review_status.title()}")
-            self.status_badge.setStyleSheet("color: #66bb6a; font-weight: bold;")
+            badge_color = "#f59e0b" if current_meta.is_keyframe else "#66bb6a"
+            self.status_badge.setText(f"Status: 🟢 {current_meta.review_status.title()}{kf_suffix}")
+            self.status_badge.setStyleSheet(f"color: {badge_color}; font-weight: bold;")
         else:
-            self.status_badge.setText(f"Status: ⚪ {current_meta.review_status.title()}")
-            self.status_badge.setStyleSheet("color: #aaaaaa; font-weight: bold;")
+            badge_color = "#f59e0b" if current_meta.is_keyframe else "#aaaaaa"
+            self.status_badge.setText(f"Status: ⚪ {current_meta.review_status.title()}{kf_suffix}")
+            self.status_badge.setStyleSheet(f"color: {badge_color}; font-weight: bold;")
 
     def step_next(self) -> None:
         if not self.frames:
@@ -209,6 +311,9 @@ class FrameTimeline(QWidget):
         if self.frames and 0 < self.current_frame_id <= len(self.frames):
             is_kf = self.keyframe_btn.isChecked()
             self.frames[self.current_frame_id - 1].is_keyframe = is_kf
+            self._update_keyframe_btn_style(is_kf)
+            self._update_slider_keyframes()
+            self.set_current_frame(self.current_frame_id)
             self.keyframe_toggled.emit(self.current_frame_id, is_kf)
 
     @staticmethod
@@ -217,3 +322,4 @@ class FrameTimeline(QWidget):
         secs = int(seconds) % 60
         millis = int((seconds - int(seconds)) * 1000)
         return f"{mins:02d}:{secs:02d}.{millis:03d}"
+

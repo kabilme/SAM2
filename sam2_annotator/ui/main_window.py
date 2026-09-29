@@ -325,6 +325,7 @@ class MainWindow(QMainWindow):
         self.video_panel.delete_requested.connect(self.delete_frames)
         self.video_panel.mark_null_requested.connect(self._on_mark_null_batch)
         self.video_panel.mark_reviewed_requested.connect(self._on_mark_reviewed_batch)
+        self.video_panel.toggle_keyframe_requested.connect(self._on_batch_toggle_keyframes)
         self.timeline.frame_changed.connect(self._on_frame_selected)
         self.timeline.keyframe_toggled.connect(self._on_keyframe_toggled)
         self.timeline.null_frame_clicked.connect(self._mark_frame_negative)
@@ -405,6 +406,10 @@ class MainWindow(QMainWindow):
 
         mark_all_null_act = anno_menu.addAction("Mark All Unannotated as Null &Frames")
         mark_all_null_act.triggered.connect(self._mark_all_unannotated_as_null)
+
+        toggle_kf_act = anno_menu.addAction("&Toggle Keyframe (K)")
+        toggle_kf_act.setShortcut(QKeySequence("K"))
+        toggle_kf_act.triggered.connect(self._toggle_current_keyframe)
 
         # Dataset Menu
         data_menu = mb.addMenu("&Dataset")
@@ -623,6 +628,8 @@ class MainWindow(QMainWindow):
 
     def open_project(self, project_dir: Path) -> None:
         if self.project_manager.load_project(project_dir, self.annotation_manager):
+            for f in self.project_manager.frames:
+                self.annotation_manager.tracker.mark_keyframe(f.frame_id, f.is_keyframe)
             self.class_panel.set_classes(self.project_manager.classes)
             self.properties_panel.set_classes(self.project_manager.classes)
             self.frame_cache = FrameCache(self.project_manager.frames_dir, self.project_manager.thumbnails_dir)
@@ -677,7 +684,45 @@ class MainWindow(QMainWindow):
         self.project_manager.is_dirty = True
 
     def _on_keyframe_toggled(self, frame_id: int, is_keyframe: bool) -> None:
+        if 0 < frame_id <= len(self.project_manager.frames):
+            self.project_manager.frames[frame_id - 1].is_keyframe = is_keyframe
+        self.annotation_manager.tracker.mark_keyframe(frame_id, is_keyframe)
+        self.video_panel.apply_filter()
+        self.video_panel.select_frame(frame_id)
+        status_msg = f"Frame #{frame_id} marked as Keyframe ★" if is_keyframe else f"Frame #{frame_id} unmarked as Keyframe"
+        self.status_bar.showMessage(status_msg, 3000)
         self.project_manager.is_dirty = True
+        self.status_save_label.setText("Modified*")
+
+    def _toggle_current_keyframe(self) -> None:
+        """Toggle keyframe status on the active frame (Shortcut: K)."""
+        fid = self.annotation_manager.active_frame_id
+        if not self.project_manager.frames or fid < 1 or fid > len(self.project_manager.frames):
+            return
+        current_kf = self.project_manager.frames[fid - 1].is_keyframe
+        new_kf = not current_kf
+        self.project_manager.frames[fid - 1].is_keyframe = new_kf
+        self.timeline.set_current_frame(fid)
+        self._on_keyframe_toggled(fid, new_kf)
+
+    def _on_batch_toggle_keyframes(self, frame_ids: List[int]) -> None:
+        """Toggle keyframe status across a list of selected frames."""
+        if not self.project_manager.frames:
+            return
+        for fid in frame_ids:
+            if 0 < fid <= len(self.project_manager.frames):
+                new_state = not self.project_manager.frames[fid - 1].is_keyframe
+                self.project_manager.frames[fid - 1].is_keyframe = new_state
+                self.annotation_manager.tracker.mark_keyframe(fid, new_state)
+
+        cur_fid = self.annotation_manager.active_frame_id
+        self.timeline.set_frames(self.project_manager.frames)
+        self.timeline.set_current_frame(cur_fid)
+        self.video_panel.apply_filter()
+        self.video_panel.select_frame(cur_fid)
+        self.project_manager.is_dirty = True
+        self.status_save_label.setText("Modified*")
+        self.status_bar.showMessage(f"Updated keyframe state for {len(frame_ids)} frame(s)", 3000)
 
     def _on_annotations_updated(self) -> None:
         fid = self.annotation_manager.active_frame_id
