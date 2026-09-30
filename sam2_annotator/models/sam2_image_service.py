@@ -88,6 +88,7 @@ class SAM2ImageService:
             frame_id=frame_id,
             source_frame_index=source_frame_index,
             points=polygons[0],
+            bounding_box=box,
             confidence=conf,
             source="sam2_box",
             tracking_status="confirmed",

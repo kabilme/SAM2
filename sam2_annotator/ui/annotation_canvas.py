@@ -319,13 +319,15 @@ class AnnotationCanvas(QGraphicsView):
                 x2 = max(self.box_start_point.x(), ix)
                 y2 = max(self.box_start_point.y(), iy)
 
+                rect_item = self.box_current_rect
+                self.box_current_rect = None
+                self.box_start_point = None
+                if rect_item:
+                    if rect_item.scene() == self.scene:
+                        self.scene.removeItem(rect_item)
+
                 if (x2 - x1) > 5 and (y2 - y1) > 5:
                     self.prompt_box_completed.emit(x1, y1, x2, y2)
-
-                if self.box_current_rect:
-                    self.scene.removeItem(self.box_current_rect)
-                    self.box_current_rect = None
-                self.box_start_point = None
 
             elif self.current_mode == MODE_EDIT and self.dragged_vertex_idx is not None:
                 selected_anno = self._find_active_annotation()
