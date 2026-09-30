@@ -120,3 +120,34 @@ def test_timeline_update_keyframe_marker(sample_frames):
     assert 2 not in timeline.slider.keyframe_indices
     assert timeline.keyframe_btn.isChecked() is False
 
+
+def test_annotation_manager_get_annotation_by_id():
+    from sam2_annotator.annotation.annotation_manager import AnnotationManager
+    from sam2_annotator.annotation.polygon import PolygonAnnotation
+
+    am = AnnotationManager()
+    anno1 = PolygonAnnotation(
+        object_id="obj_1",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=0,
+        class_name="car",
+        points=[(0, 0), (10, 0), (10, 10), (0, 10)],
+    )
+    anno2 = PolygonAnnotation(
+        object_id="obj_2",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=1,
+        class_name="pedestrian",
+        points=[(20, 20), (30, 20), (30, 30), (20, 30)],
+    )
+    am.add_annotation(anno1)
+    am.add_annotation(anno2)
+
+    assert am.get_annotation_by_id(1, "obj_1") == anno1
+    assert am.get_annotation_by_id(1, "obj_2") == anno2
+    assert am.get_annotation_by_id(1, "obj_3") is None
+    assert am.get_annotation_by_id(2, "obj_1") is None
+
+

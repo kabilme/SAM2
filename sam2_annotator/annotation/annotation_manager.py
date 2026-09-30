@@ -98,6 +98,13 @@ class AnnotationManager:
                 return a
         return None
 
+    def get_annotation_by_id(self, frame_id: int, object_id: str) -> Optional[PolygonAnnotation]:
+        """Get annotation matching object_id on frame_id."""
+        for a in self.frame_annotations.get(frame_id, []):
+            if a.object_id == object_id:
+                return a
+        return None
+
     def undo(self) -> bool:
         """Undo last annotation modification."""
         if not self.undo_stack:
