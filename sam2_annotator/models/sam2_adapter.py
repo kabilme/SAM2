@@ -224,14 +224,26 @@ class MockSAM2Adapter(SAM2AdapterInterface):
 
 
 class SAM2LocalAdapter(SAM2AdapterInterface):
-    """Production SAM 2 adapter utilizing official Ultralytics SAM2 / SAM model architecture."""
+    """Production SAM 2 adapter utilizing official Meta SAM 2.1 Hiera architecture with Ultralytics fallback."""
 
     def __init__(self):
         self.model: Any = None
+        self.native_predictor: Any = None
+        self.use_native_sam2: bool = False
         self._is_loaded: bool = False
+        self._cached_img_id: Any = None
         self.device_str: str = "cpu"
         self.precision: str = "fp32"
         self.checkpoint_path: str = ""
+
+    def _set_native_image(self, image_bgr: np.ndarray) -> None:
+        """Cache image embeddings in native predictor to avoid re-encoding on consecutive prompts."""
+        h, w = image_bgr.shape[:2]
+        img_token = (id(image_bgr), h, w, int(image_bgr[0, 0, 0]), int(image_bgr[h // 2, w // 2, 0]))
+        if self._cached_img_id != img_token:
+            img_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+            self.native_predictor.set_image(img_rgb)
+            self._cached_img_id = img_token
 
     def load_model(
         self,
@@ -239,12 +251,67 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
         device: str = "auto",
         precision: str = "fp32",
     ) -> bool:
-        """Load SAM model using Ultralytics SAM architecture."""
+        """Load SAM 2.1 Hiera model natively with Ultralytics SAM fallback."""
+        torch_dev = get_torch_device(device)
+        self.device_str = str(torch_dev)
+        self.precision = precision
+
+        if not checkpoint_path:
+            checkpoint_path = "sam2.1_hiera_tiny.pt"  # Meta SAM 2.1 Hiera Tiny model
+
+        ckpt_file = Path(checkpoint_path)
+        if not ckpt_file.exists():
+            if ckpt_file.name == "sam2.1_hiera_tiny.pt":
+                alt = Path("sam2.1_t.pt")
+                if alt.exists():
+                    logger.info("Using local fallback %s for %s", alt.name, ckpt_file.name)
+                    checkpoint_path = str(alt)
+                else:
+                    logger.info("Downloading official Meta %s...", ckpt_file.name)
+                    import urllib.request
+                    url = "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt"
+                    urllib.request.urlretrieve(url, str(ckpt_file))
+
+        self.checkpoint_path = checkpoint_path
+
+        # 1. Primary: Native Meta SAM 2.1 Hiera Architecture
+        try:
+            from sam2.build_sam import build_sam2
+            from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+            cfg_map = {
+                "sam2.1_hiera_tiny.pt": "configs/sam2.1/sam2.1_hiera_t.yaml",
+                "sam2.1_hiera_small.pt": "configs/sam2.1/sam2.1_hiera_s.yaml",
+                "sam2.1_hiera_base_plus.pt": "configs/sam2.1/sam2.1_hiera_b+.yaml",
+                "sam2.1_hiera_large.pt": "configs/sam2.1/sam2.1_hiera_l.yaml",
+                "sam2.1_t.pt": "configs/sam2.1/sam2.1_hiera_t.yaml",
+                "sam2.1_s.pt": "configs/sam2.1/sam2.1_hiera_s.yaml",
+                "sam2.1_b.pt": "configs/sam2.1/sam2.1_hiera_b+.yaml",
+                "sam2.1_l.pt": "configs/sam2.1/sam2.1_hiera_l.yaml",
+                "sam2_hiera_tiny.pt": "configs/sam2/sam2_hiera_t.yaml",
+                "sam2_hiera_small.pt": "configs/sam2/sam2_hiera_s.yaml",
+                "sam2_hiera_base_plus.pt": "configs/sam2/sam2_hiera_b+.yaml",
+                "sam2_hiera_large.pt": "configs/sam2/sam2_hiera_l.yaml",
+            }
+            model_cfg = cfg_map.get(ckpt_file.name, "configs/sam2.1/sam2.1_hiera_t.yaml")
+            logger.info("Initializing native Meta SAM 2.1 Hiera model (%s, cfg=%s) on %s...",
+                        checkpoint_path, model_cfg, self.device_str)
+
+            raw_model = build_sam2(model_cfg, checkpoint_path, device=self.device_str)
+            self.native_predictor = SAM2ImagePredictor(raw_model)
+            self.model = raw_model
+            self.use_native_sam2 = True
+            self._is_loaded = True
+            logger.info("Meta SAM 2.1 Hiera model successfully initialized via native SAM2 engine.")
+            return True
+        except Exception as e:
+            logger.info("Native Meta SAM 2.1 load not available (%s); falling back to Ultralytics SAM architecture...", e)
+
+        # 2. Secondary / Fallback: Ultralytics SAM architecture
         try:
             import ultralytics.models.sam.build as sam_build
             from ultralytics import SAM
 
-            # Register Meta official checkpoint names in Ultralytics model map
             meta_map = {
                 "sam2.1_hiera_tiny.pt": "sam2.1_t.pt",
                 "sam2.1_hiera_small.pt": "sam2.1_s.pt",
@@ -259,44 +326,24 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
                 if meta_name not in sam_build.sam_model_map and ultra_name in sam_build.sam_model_map:
                     sam_build.sam_model_map[meta_name] = sam_build.sam_model_map[ultra_name]
 
-            # Select device
-            torch_dev = get_torch_device(device)
-            self.device_str = str(torch_dev)
-            self.precision = precision
-
-            # Determine checkpoint
-            if not checkpoint_path:
-                checkpoint_path = "sam2.1_hiera_tiny.pt"  # Meta SAM 2.1 Hiera Tiny model
-
-            ckpt_file = Path(checkpoint_path)
-            if not ckpt_file.exists():
-                if ckpt_file.name == "sam2.1_hiera_tiny.pt":
-                    alt = Path("sam2.1_t.pt")
-                    if alt.exists():
-                        logger.info("Using local fallback %s for %s", alt.name, ckpt_file.name)
-                        checkpoint_path = str(alt)
-                    else:
-                        logger.info("Downloading official Meta %s...", ckpt_file.name)
-                        import urllib.request
-                        url = "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt"
-                        urllib.request.urlretrieve(url, str(ckpt_file))
-
-            self.checkpoint_path = checkpoint_path
-            logger.info("Initializing SAM model (%s) on %s with %s precision...",
+            logger.info("Initializing Ultralytics SAM model (%s) on %s with %s precision...",
                         checkpoint_path, self.device_str, precision)
 
             self.model = SAM(checkpoint_path)
+            self.use_native_sam2 = False
             self._is_loaded = True
-            logger.info("SAM model successfully initialized.")
+            logger.info("SAM model successfully initialized via Ultralytics.")
             return True
         except Exception as e:
             logger.error("Failed to load SAM model: %s", e)
             self._is_loaded = False
             self.model = None
+            self.native_predictor = None
+            self.use_native_sam2 = False
             return False
 
     def is_loaded(self) -> bool:
-        return self._is_loaded and self.model is not None
+        return self._is_loaded and (self.model is not None or self.native_predictor is not None)
 
     def segment_with_points(
         self,
@@ -324,8 +371,31 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
         if not pts:
             return np.zeros((h, w), dtype=np.uint8), None
 
+        # 1. Native Meta SAM 2.1 Hiera Tiny
+        if self.use_native_sam2 and self.native_predictor is not None:
+            try:
+                self._set_native_image(image_bgr)
+                point_coords = np.array(pts, dtype=np.float32)
+                point_labels = np.array(labels, dtype=np.int32)
+                masks, scores, _ = self.native_predictor.predict(
+                    point_coords=point_coords,
+                    point_labels=point_labels,
+                    box=None,
+                    multimask_output=False,
+                )
+                if masks is not None and len(masks) > 0:
+                    binary_mask = (masks[0] > 0.0).astype(np.uint8) * 255
+                    conf = float(scores[0]) if (scores is not None and len(scores) > 0) else 0.90
+                    return binary_mask, conf
+                return np.zeros((h, w), dtype=np.uint8), None
+            except Exception as e:
+                logger.error("Error in native SAM2 segment_with_points: %s", e)
+                if "out of memory" in str(e).lower():
+                    clear_memory(torch.device(self.device_str))
+                return np.zeros((h, w), dtype=np.uint8), None
+
+        # 2. Ultralytics SAM inference
         try:
-            # Ultralytics SAM inference
             results = self.model.predict(
                 source=image_bgr,
                 points=pts,
@@ -338,7 +408,6 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
                 mask_data = results[0].masks.data.cpu().numpy()
                 if mask_data.shape[0] > 0:
                     raw_mask = mask_data[0]
-                    # Resize to match original image dimensions if needed
                     if raw_mask.shape != (h, w):
                         raw_mask = cv2.resize(raw_mask.astype(np.float32), (w, h), interpolation=cv2.INTER_NEAREST)
                     binary_mask = (raw_mask > 0.5).astype(np.uint8) * 255
@@ -362,8 +431,31 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
             raise RuntimeError("SAM model is not loaded.")
 
         h, w = image_bgr.shape[:2]
-        bboxes = [[float(v) for v in box]]
 
+        # 1. Native Meta SAM 2.1 Hiera Tiny
+        if self.use_native_sam2 and self.native_predictor is not None:
+            try:
+                self._set_native_image(image_bgr)
+                box_np = np.array([float(v) for v in box], dtype=np.float32)
+                masks, scores, _ = self.native_predictor.predict(
+                    point_coords=None,
+                    point_labels=None,
+                    box=box_np,
+                    multimask_output=False,
+                )
+                if masks is not None and len(masks) > 0:
+                    binary_mask = (masks[0] > 0.0).astype(np.uint8) * 255
+                    conf = float(scores[0]) if (scores is not None and len(scores) > 0) else 0.90
+                    return binary_mask, conf
+                return np.zeros((h, w), dtype=np.uint8), None
+            except Exception as e:
+                logger.error("Error in native SAM2 segment_with_box: %s", e)
+                if "out of memory" in str(e).lower():
+                    clear_memory(torch.device(self.device_str))
+                return np.zeros((h, w), dtype=np.uint8), None
+
+        # 2. Ultralytics SAM inference
+        bboxes = [[float(v) for v in box]]
         try:
             results = self.model.predict(
                 source=image_bgr,
@@ -401,7 +493,6 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
             raise RuntimeError("SAM model is not loaded.")
 
         h, w = image_bgr.shape[:2]
-        bboxes = [[float(v) for v in box]]
         pts = []
         labels = []
 
@@ -415,6 +506,33 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
                 pts.append([float(p[0]), float(p[1])])
                 labels.append(0)
 
+        # 1. Native Meta SAM 2.1 Hiera Tiny
+        if self.use_native_sam2 and self.native_predictor is not None:
+            try:
+                self._set_native_image(image_bgr)
+                box_np = np.array([float(v) for v in box], dtype=np.float32)
+                point_coords = np.array(pts, dtype=np.float32) if pts else None
+                point_labels = np.array(labels, dtype=np.int32) if labels else None
+
+                masks, scores, _ = self.native_predictor.predict(
+                    point_coords=point_coords,
+                    point_labels=point_labels,
+                    box=box_np,
+                    multimask_output=False,
+                )
+                if masks is not None and len(masks) > 0:
+                    binary_mask = (masks[0] > 0.0).astype(np.uint8) * 255
+                    conf = float(scores[0]) if (scores is not None and len(scores) > 0) else 0.90
+                    return binary_mask, conf
+                return np.zeros((h, w), dtype=np.uint8), None
+            except Exception as e:
+                logger.error("Error in native SAM2 segment_with_box_and_points: %s", e)
+                if "out of memory" in str(e).lower():
+                    clear_memory(torch.device(self.device_str))
+                return np.zeros((h, w), dtype=np.uint8), None
+
+        # 2. Ultralytics SAM inference
+        bboxes = [[float(v) for v in box]]
         kwargs = {
             "source": image_bgr,
             "bboxes": bboxes,
@@ -489,9 +607,15 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
 
     def release(self) -> None:
         """Free memory."""
+        if self.native_predictor is not None:
+            del self.native_predictor
+            self.native_predictor = None
         if self.model is not None:
             del self.model
             self.model = None
+        self._cached_img_id = None
+        self.use_native_sam2 = False
         self._is_loaded = False
         clear_memory(torch.device(self.device_str))
         logger.info("SAM 2 model released from memory.")
+
