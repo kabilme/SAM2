@@ -204,6 +204,18 @@ class FrameTimeline(QWidget):
         kf_set = {f.frame_id for f in self.frames if f.is_keyframe}
         self.slider.set_keyframes(kf_set)
 
+    def update_keyframe_marker(self, frame_id: int, is_keyframe: bool) -> None:
+        """Update keyframe marker on timeline and toggle button if on active frame."""
+        if 0 < frame_id <= len(self.frames):
+            self.frames[frame_id - 1].is_keyframe = is_keyframe
+            self._update_slider_keyframes()
+            if frame_id == self.current_frame_id:
+                self.keyframe_btn.blockSignals(True)
+                self.keyframe_btn.setChecked(is_keyframe)
+                self._update_keyframe_btn_style(is_keyframe)
+                self.keyframe_btn.blockSignals(False)
+                self.set_current_frame(frame_id)
+
     def set_frames(self, frames: List[FrameMetadata]) -> None:
         self.frames = frames
         total = len(frames)

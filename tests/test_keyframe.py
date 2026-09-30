@@ -98,3 +98,25 @@ def test_annotation_manager_tracker_keyframe_sync(sample_frames):
     am.tracker.mark_keyframe(1, False)
     assert am.tracker.is_keyframe(1) is False
 
+
+def test_timeline_update_keyframe_marker(sample_frames):
+    app = QApplication.instance() or QApplication([])
+
+    timeline = FrameTimeline()
+    timeline.set_frames(sample_frames)
+    timeline.set_current_frame(2)
+
+    assert 2 not in timeline.slider.keyframe_indices
+    assert timeline.keyframe_btn.isChecked() is False
+
+    # External toggle via update_keyframe_marker
+    timeline.update_keyframe_marker(2, True)
+
+    assert 2 in timeline.slider.keyframe_indices
+    assert timeline.keyframe_btn.isChecked() is True
+    assert "[ON]" in timeline.keyframe_btn.text()
+
+    timeline.update_keyframe_marker(2, False)
+    assert 2 not in timeline.slider.keyframe_indices
+    assert timeline.keyframe_btn.isChecked() is False
+

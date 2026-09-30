@@ -689,6 +689,7 @@ class MainWindow(QMainWindow):
             self.project_manager.frames[frame_id - 1].is_keyframe = is_keyframe
         if hasattr(self.annotation_manager, "tracker") and self.annotation_manager.tracker:
             self.annotation_manager.tracker.mark_keyframe(frame_id, is_keyframe)
+        self.timeline.update_keyframe_marker(frame_id, is_keyframe)
         self.video_panel.apply_filter()
         self.video_panel.select_frame(frame_id)
         status_msg = f"Frame #{frame_id} marked as Keyframe ★" if is_keyframe else f"Frame #{frame_id} unmarked as Keyframe"
@@ -703,8 +704,6 @@ class MainWindow(QMainWindow):
             return
         current_kf = self.project_manager.frames[fid - 1].is_keyframe
         new_kf = not current_kf
-        self.project_manager.frames[fid - 1].is_keyframe = new_kf
-        self.timeline.set_current_frame(fid)
         self._on_keyframe_toggled(fid, new_kf)
 
     def _on_batch_toggle_keyframes(self, frame_ids: List[int]) -> None:
