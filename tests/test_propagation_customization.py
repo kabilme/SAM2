@@ -194,6 +194,7 @@ def test_video_service_box_prompt_propagation(tmp_path, sample_frames):
         target_frames=sample_frames[1:4],
         prompt_type="box",
         box_padding_ratio=0.0,
+        source_frame_filename=sample_frames[0].filename,
     )
 
     assert len(results) == 3

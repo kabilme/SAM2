@@ -80,6 +80,17 @@ class SAM2AdapterInterface(ABC):
         pass
 
     @abstractmethod
+    def segment_with_box_and_points(
+        self,
+        image_bgr: np.ndarray,
+        box: Tuple[float, float, float, float],
+        positive_points: Optional[List[Tuple[float, float]]] = None,
+        negative_points: Optional[List[Tuple[float, float]]] = None,
+    ) -> Tuple[np.ndarray, Optional[float]]:
+        """Run segmentation given both bounding box and foreground/background prompt points."""
+        pass
+
+    @abstractmethod
     def segment_with_text(
         self,
         image_bgr: np.ndarray,
@@ -168,6 +179,19 @@ class MockSAM2Adapter(SAM2AdapterInterface):
         # Inset slightly to make it an organic polygon
         cv2.rectangle(mask, (x1 + 2, y1 + 2), (x2 - 2, y2 - 2), 255, -1)
         return mask, 0.92
+
+    def segment_with_box_and_points(
+        self,
+        image_bgr: np.ndarray,
+        box: Tuple[float, float, float, float],
+        positive_points: Optional[List[Tuple[float, float]]] = None,
+        negative_points: Optional[List[Tuple[float, float]]] = None,
+    ) -> Tuple[np.ndarray, Optional[float]]:
+        h, w = image_bgr.shape[:2]
+        mask = np.zeros((h, w), dtype=np.uint8)
+        x1, y1, x2, y2 = [int(v) for v in box]
+        cv2.rectangle(mask, (x1 + 2, y1 + 2), (x2 - 2, y2 - 2), 255, -1)
+        return mask, 0.94
 
     def segment_with_text(
         self,
@@ -361,6 +385,61 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
             return np.zeros((h, w), dtype=np.uint8), None
         except Exception as e:
             logger.error("Error in segment_with_box: %s", e)
+            if "out of memory" in str(e).lower():
+                clear_memory(torch.device(self.device_str))
+            return np.zeros((h, w), dtype=np.uint8), None
+
+    def segment_with_box_and_points(
+        self,
+        image_bgr: np.ndarray,
+        box: Tuple[float, float, float, float],
+        positive_points: Optional[List[Tuple[float, float]]] = None,
+        negative_points: Optional[List[Tuple[float, float]]] = None,
+    ) -> Tuple[np.ndarray, Optional[float]]:
+        """Prompt-based segmentation combining bounding box and foreground/background points."""
+        if not self.is_loaded():
+            raise RuntimeError("SAM model is not loaded.")
+
+        h, w = image_bgr.shape[:2]
+        bboxes = [[float(v) for v in box]]
+        pts = []
+        labels = []
+
+        if positive_points:
+            for p in positive_points:
+                pts.append([float(p[0]), float(p[1])])
+                labels.append(1)
+
+        if negative_points:
+            for p in negative_points:
+                pts.append([float(p[0]), float(p[1])])
+                labels.append(0)
+
+        kwargs = {
+            "source": image_bgr,
+            "bboxes": bboxes,
+            "device": self.device_str,
+            "verbose": False,
+        }
+        if pts:
+            kwargs["points"] = pts
+            kwargs["labels"] = labels
+
+        try:
+            results = self.model.predict(**kwargs)
+            if results and len(results) > 0 and results[0].masks is not None:
+                mask_data = results[0].masks.data.cpu().numpy()
+                if mask_data.shape[0] > 0:
+                    raw_mask = mask_data[0]
+                    if raw_mask.shape != (h, w):
+                        raw_mask = cv2.resize(raw_mask.astype(np.float32), (w, h), interpolation=cv2.INTER_NEAREST)
+                    binary_mask = (raw_mask > 0.5).astype(np.uint8) * 255
+                    conf = float(results[0].boxes.conf[0]) if (results[0].boxes and len(results[0].boxes.conf) > 0) else 0.90
+                    return binary_mask, conf
+
+            return np.zeros((h, w), dtype=np.uint8), None
+        except Exception as e:
+            logger.error("Error in segment_with_box_and_points: %s", e)
             if "out of memory" in str(e).lower():
                 clear_memory(torch.device(self.device_str))
             return np.zeros((h, w), dtype=np.uint8), None

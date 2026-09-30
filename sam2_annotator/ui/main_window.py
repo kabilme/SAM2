@@ -118,6 +118,7 @@ class PropagationWorker(QThread):
         target_frames: List[FrameMetadata],
         prompt_type: str = "box",
         box_padding_ratio: float = 0.0,
+        source_frame_filename: Optional[str] = None,
     ):
         super().__init__()
         self.service = service
@@ -125,6 +126,7 @@ class PropagationWorker(QThread):
         self.target_frames = target_frames
         self.prompt_type = prompt_type
         self.box_padding_ratio = box_padding_ratio
+        self.source_frame_filename = source_frame_filename
         self._cancelled = False
 
     def cancel(self):
@@ -137,6 +139,7 @@ class PropagationWorker(QThread):
                 target_frames=self.target_frames,
                 prompt_type=self.prompt_type,
                 box_padding_ratio=self.box_padding_ratio,
+                source_frame_filename=self.source_frame_filename,
                 progress_callback=lambda cur, tot, msg: self.progress.emit(cur, tot, msg),
                 is_cancelled=lambda: self._cancelled,
             )
@@ -908,7 +911,9 @@ class MainWindow(QMainWindow):
         prompt_type: Optional[str] = None,
     ) -> None:
         fid = self.annotation_manager.active_frame_id
-        anno = self.annotation_manager.get_selected_annotation(fid)
+        anno = self.annotation_manager.get_annotation_by_id(fid, object_id)
+        if not anno:
+            anno = self.annotation_manager.get_selected_annotation(fid)
         if not anno:
             return
 
@@ -916,6 +921,8 @@ class MainWindow(QMainWindow):
         if fid >= total_f:
             QMessageBox.information(self, "Tracking", "Already on last frame.")
             return
+
+        source_frame_filename = self.project_manager.frames[fid - 1].filename
 
         # Fallback to properties panel values if not passed
         if frame_count is None:
@@ -964,6 +971,7 @@ class MainWindow(QMainWindow):
             target_frames,
             prompt_type=prompt_type,
             box_padding_ratio=pad_ratio,
+            source_frame_filename=source_frame_filename,
         )
         self.current_worker = worker
 
