@@ -17,7 +17,7 @@ class ModelConfig:
     default_model_type: str = "sam2.1_hiera_tiny.pt"
     propagation_frames: int = 30
     propagation_prompt_type: str = "box"
-    propagation_box_padding: float = 0.08
+    propagation_box_padding: float = 0.0
 
 
 @dataclass

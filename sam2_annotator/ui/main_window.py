@@ -117,7 +117,7 @@ class PropagationWorker(QThread):
         initial_anno: PolygonAnnotation,
         target_frames: List[FrameMetadata],
         prompt_type: str = "box",
-        box_padding_ratio: float = 0.08,
+        box_padding_ratio: float = 0.0,
     ):
         super().__init__()
         self.service = service
@@ -925,7 +925,7 @@ class MainWindow(QMainWindow):
         if prompt_type is None:
             prompt_type = getattr(self.properties_panel, "propagation_prompt_type", "box")
 
-        pad_ratio = getattr(self.config.model, "propagation_box_padding", 0.08)
+        pad_ratio = getattr(self.config.model, "propagation_box_padding", 0.0)
 
         if mode == "end_of_video":
             target_frames = self.project_manager.frames[fid : total_f]

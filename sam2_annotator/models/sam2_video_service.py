@@ -24,7 +24,7 @@ class SAM2VideoService:
         initial_annotation: PolygonAnnotation,
         target_frames: List[FrameMetadata],
         prompt_type: str = "box",
-        box_padding_ratio: float = 0.08,
+        box_padding_ratio: float = 0.0,
         simplify_tolerance: float = 0.005,
         min_area: float = 20.0,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
@@ -60,28 +60,33 @@ class SAM2VideoService:
 
             h, w = img.shape[:2]
 
-            # Compute padded bounding box prompt with adaptive margin to prevent motion clipping
+            # Use exact bounding box prompt clamped to image dimensions (no margin expansion by default)
             x1, y1, x2, y2 = current_box
-            bw = max(1.0, x2 - x1)
-            bh = max(1.0, y2 - y1)
-            pad_x = max(3.0, bw * box_padding_ratio)
-            pad_y = max(3.0, bh * box_padding_ratio)
-            padded_box = (
-                max(0.0, x1 - pad_x),
-                max(0.0, y1 - pad_y),
-                min(float(w), x2 + pad_x),
-                min(float(h), y2 + pad_y),
-            )
+            if box_padding_ratio > 0.0:
+                bw = max(1.0, x2 - x1)
+                bh = max(1.0, y2 - y1)
+                pad_x = bw * box_padding_ratio
+                pad_y = bh * box_padding_ratio
+                prompt_box = (
+                    max(0.0, x1 - pad_x),
+                    max(0.0, y1 - pad_y),
+                    min(float(w), x2 + pad_x),
+                    min(float(h), y2 + pad_y),
+                )
+            else:
+                prompt_box = (
+                    max(0.0, x1),
+                    max(0.0, y1),
+                    min(float(w), x2),
+                    min(float(h), y2),
+                )
 
             mask = None
             conf = None
 
             if prompt_type == "box":
-                # Primary: Bounding box prompt with adaptive margin
-                mask, conf = self.adapter.segment_with_box(img, padded_box)
-                if mask is None or np.count_nonzero(mask) == 0:
-                    # Retry with unpadded box prompt
-                    mask, conf = self.adapter.segment_with_box(img, current_box)
+                # Primary: Bounding box prompt (exact bounding box)
+                mask, conf = self.adapter.segment_with_box(img, prompt_box)
                 if mask is None or np.count_nonzero(mask) == 0:
                     # Fallback to centroid point if box produced no mask
                     if current_centroid:
@@ -90,9 +95,9 @@ class SAM2VideoService:
                 if current_centroid:
                     mask, conf = self.adapter.segment_with_points(img, [current_centroid])
                 if mask is None or np.count_nonzero(mask) == 0:
-                    mask, conf = self.adapter.segment_with_box(img, padded_box)
+                    mask, conf = self.adapter.segment_with_box(img, prompt_box)
             else:  # "combined"
-                mask, conf = self.adapter.segment_with_box(img, padded_box)
+                mask, conf = self.adapter.segment_with_box(img, prompt_box)
                 if mask is None or np.count_nonzero(mask) == 0:
                     if current_centroid:
                         mask, conf = self.adapter.segment_with_points(img, [current_centroid])

@@ -8,7 +8,7 @@ model:
   default_model_type: sam2.1_hiera_tiny.pt
   propagation_frames: 30
   propagation_prompt_type: box
-  propagation_box_padding: 0.08
+  propagation_box_padding: 0.0
 frame:
   default_sampling: every_n
   every_n: 10

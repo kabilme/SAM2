@@ -11,7 +11,7 @@ model:
   default_model_type: "sam2.1_hiera_tiny.pt" # Default model weight identifier
   propagation_frames: 30      # Default number of frames to propagate tracking forward
   propagation_prompt_type: "box" # "box", "point", "combined"
-  propagation_box_padding: 0.08 # Fraction of bounding box size added as margin during tracking
+  propagation_box_padding: 0.0 # Fraction of bounding box size added as margin during tracking (0.0 = exact box)
 
 frame:
   default_sampling: "every_n" # "every_n", "every_frame", "fixed_count", "interval_seconds", "frame_range"

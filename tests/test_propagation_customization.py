@@ -28,7 +28,7 @@ def test_propagation_config_loading_and_saving(tmp_path):
     cfg = AppConfig()
     assert cfg.model.propagation_frames == 30
     assert cfg.model.propagation_prompt_type == "box"
-    assert cfg.model.propagation_box_padding == 0.08
+    assert cfg.model.propagation_box_padding == 0.0
 
     cfg.model.propagation_frames = 45
     cfg.model.propagation_prompt_type = "box"
@@ -188,12 +188,12 @@ def test_video_service_box_prompt_propagation(tmp_path, sample_frames):
         bounding_box=(50.0, 50.0, 150.0, 150.0),
     )
 
-    # Propagate across 3 subsequent frames with box prompt
+    # Propagate across 3 subsequent frames with exact box prompt (no margin)
     results = service.propagate_object(
         initial_annotation=initial_anno,
         target_frames=sample_frames[1:4],
         prompt_type="box",
-        box_padding_ratio=0.08,
+        box_padding_ratio=0.0,
     )
 
     assert len(results) == 3
