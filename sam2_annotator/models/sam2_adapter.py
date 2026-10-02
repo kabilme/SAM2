@@ -235,6 +235,7 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
         self.device_str: str = "cpu"
         self.precision: str = "fp32"
         self.checkpoint_path: str = ""
+        self._video_predictor: Any = None
 
     def _set_native_image(self, image_bgr: np.ndarray) -> None:
         """Cache image embeddings in native predictor to avoid re-encoding on consecutive prompts."""
@@ -344,6 +345,47 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
 
     def is_loaded(self) -> bool:
         return self._is_loaded and (self.model is not None or self.native_predictor is not None)
+
+    def get_video_predictor(self) -> Any:
+        """Return an initialized Meta SAM 2 Video Predictor instance, or None if unavailable."""
+        if self._video_predictor is not None:
+            return self._video_predictor
+
+        try:
+            from sam2.build_sam import build_sam2_video_predictor
+
+            cfg_map = {
+                "sam2.1_hiera_tiny.pt": "configs/sam2.1/sam2.1_hiera_t.yaml",
+                "sam2.1_hiera_small.pt": "configs/sam2.1/sam2.1_hiera_s.yaml",
+                "sam2.1_hiera_base_plus.pt": "configs/sam2.1/sam2.1_hiera_b+.yaml",
+                "sam2.1_hiera_large.pt": "configs/sam2.1/sam2.1_hiera_l.yaml",
+                "sam2.1_t.pt": "configs/sam2.1/sam2.1_hiera_t.yaml",
+                "sam2.1_s.pt": "configs/sam2.1/sam2.1_hiera_s.yaml",
+                "sam2.1_b.pt": "configs/sam2.1/sam2.1_hiera_b+.yaml",
+                "sam2.1_l.pt": "configs/sam2.1/sam2.1_hiera_l.yaml",
+                "sam2_hiera_tiny.pt": "configs/sam2/sam2_hiera_t.yaml",
+                "sam2_hiera_small.pt": "configs/sam2/sam2_hiera_s.yaml",
+                "sam2_hiera_base_plus.pt": "configs/sam2/sam2_hiera_b+.yaml",
+                "sam2_hiera_large.pt": "configs/sam2/sam2_hiera_l.yaml",
+            }
+            ckpt_name = Path(self.checkpoint_path).name if self.checkpoint_path else "sam2.1_hiera_tiny.pt"
+            model_cfg = cfg_map.get(ckpt_name, "configs/sam2.1/sam2.1_hiera_t.yaml")
+            logger.info(
+                "Building native Meta SAM 2.1 Video Predictor (%s, cfg=%s) on %s...",
+                self.checkpoint_path, model_cfg, self.device_str
+            )
+
+            self._video_predictor = build_sam2_video_predictor(
+                model_cfg,
+                self.checkpoint_path,
+                device=self.device_str,
+                apply_postprocessing=False,
+            )
+            return self._video_predictor
+        except Exception as e:
+            logger.info("Native Meta SAM 2.1 Video Predictor not available (%s)", e)
+            self._video_predictor = None
+            return None
 
     def segment_with_points(
         self,
@@ -607,6 +649,9 @@ class SAM2LocalAdapter(SAM2AdapterInterface):
 
     def release(self) -> None:
         """Free memory."""
+        if self._video_predictor is not None:
+            del self._video_predictor
+            self._video_predictor = None
         if self.native_predictor is not None:
             del self.native_predictor
             self.native_predictor = None

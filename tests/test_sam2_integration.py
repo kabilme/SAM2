@@ -94,3 +94,85 @@ def test_real_sam_local_adapter_pipeline():
     polygons = mask_to_polygons(mask, tolerance_ratio=0.005, min_area=50.0)
     assert len(polygons) >= 1
     assert len(polygons[0]) >= 3
+
+
+@pytest.mark.skipif(
+    not (Path("sam2.1_hiera_tiny.pt").exists() or Path("sam2.1_t.pt").exists()),
+    reason="SAM model checkpoint not present locally",
+)
+def test_native_video_predictor_propagation(tmp_path):
+    """Verify that SAM2VideoService uses native Meta SAM 2.1 Video Predictor with spatio-temporal memory."""
+    from sam2_annotator.models.sam2_video_service import SAM2VideoService
+    from sam2_annotator.video.frame_cache import FrameCache
+    from sam2_annotator.video.frame_extractor import FrameMetadata
+    from sam2_annotator.annotation.polygon import PolygonAnnotation
+
+    frames_dir = tmp_path / "frames"
+    thumbs_dir = tmp_path / "thumbs"
+    frames_dir.mkdir()
+    thumbs_dir.mkdir()
+
+    # Create 3 synthetic frames with a moving square
+    h, w = 360, 640
+    frame_metas = []
+    for i in range(3):
+        fname = f"frame_{i:04d}.jpg"
+        img = np.zeros((h, w, 3), dtype=np.uint8)
+        # moving bright square
+        x0, y0 = 100 + i * 15, 80 + i * 10
+        cv2.rectangle(img, (x0, y0), (x0 + 80, y0 + 80), (255, 255, 255), -1)
+        cv2.imwrite(str(frames_dir / fname), img)
+        frame_metas.append(FrameMetadata(
+            frame_id=i + 1,
+            source_frame_index=i,
+            timestamp_seconds=i * 0.033,
+            filename=fname,
+            width=w,
+            height=h,
+            is_keyframe=(i == 0),
+        ))
+
+    ckpt = "sam2.1_hiera_tiny.pt" if Path("sam2.1_hiera_tiny.pt").exists() else "sam2.1_t.pt"
+    adapter = SAM2LocalAdapter()
+    adapter.load_model(checkpoint_path=ckpt, device="cpu")
+    assert adapter.is_loaded()
+
+    # Verify get_video_predictor returns valid predictor
+    vp = adapter.get_video_predictor()
+    assert vp is not None
+
+    frame_cache = FrameCache(frames_dir, thumbs_dir)
+    service = SAM2VideoService(adapter, frame_cache)
+
+    initial_anno = PolygonAnnotation(
+        object_id="video_prop_obj_1",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=0,
+        class_name="target",
+        points=[(100, 80), (180, 80), (180, 160), (100, 160)],
+        bounding_box=(100.0, 80.0, 180.0, 160.0),
+    )
+
+    # Propagate across frames 2 and 3
+    results = service.propagate_object(
+        initial_annotation=initial_anno,
+        target_frames=frame_metas[1:],
+        prompt_type="box",
+        box_padding_ratio=0.0,
+        source_frame_filename=frame_metas[0].filename,
+    )
+
+    assert len(results) == 2
+    for r in results:
+        assert r.object_id == "video_prop_obj_1"
+        assert r.source == "sam2_box_track"
+        assert r.tracking_status == "tracked"
+        assert len(r.points) >= 3
+        assert r.bounding_box != (0.0, 0.0, 0.0, 0.0)
+        assert r.confidence is not None and r.confidence > 0.5
+
+    # Check that release clears predictor
+    adapter.release()
+    assert adapter._video_predictor is None
+
