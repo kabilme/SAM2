@@ -63,7 +63,7 @@ Each `.txt` file in `labels/` corresponds to an image file with the same basenam
 Generated `data.yaml` example:
 
 ```yaml
-path: D:/SAM2/exported_dataset
+path: D:/SAM3/exported_dataset  # or relative path: ./exported_dataset
 train: images/train
 val: images/val
 test: images/test
