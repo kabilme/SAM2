@@ -9,4 +9,6 @@ shapely>=2.0.0
 PyYAML>=6.0.0
 psutil>=5.9.0
 sam2>=1.0.0
+hydra-core>=1.3.2
+tqdm>=4.66.1
 pytest>=7.4.0
