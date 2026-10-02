@@ -76,3 +76,33 @@ def test_polygon_editor():
     # Delete vertex
     assert PolygonEditor.delete_vertex(anno, 1)
     assert len(anno.points) == 4
+
+
+def test_annotation_manager_batch_add():
+    from sam2_annotator.annotation.annotation_manager import AnnotationManager
+
+    mgr = AnnotationManager()
+    callback_calls = []
+    mgr.register_change_listener(lambda: callback_calls.append(True))
+
+    annos = [
+        PolygonAnnotation(
+            object_id="batch_1",
+            class_id=0,
+            class_name="c",
+            frame_id=i,
+            source_frame_index=i - 1,
+            points=[(10.0, 10.0), (50.0, 10.0), (50.0, 50.0), (10.0, 50.0)],
+        )
+        for i in range(1, 10)
+    ]
+
+    # Batch add 9 annotations
+    mgr.add_annotations(annos)
+
+    assert mgr.total_annotations_count() == 9
+    assert len(callback_calls) == 1  # Fired change listener exactly once!
+    assert mgr.selected_object_id == "batch_1"
+    assert len(mgr.undo_stack) == 1
+    assert "Batch add 9 annotations" in mgr.undo_stack[0]["description"]
+

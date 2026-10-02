@@ -66,6 +66,19 @@ class AnnotationManager:
         self.selected_object_id = annotation.object_id
         self._notify_change()
 
+    def add_annotations(self, annotations: List[PolygonAnnotation]) -> None:
+        """Batch add polygon annotations across frames with a single undo snapshot and change notification."""
+        if not annotations:
+            return
+        self._save_snapshot(f"Batch add {len(annotations)} annotations")
+        for annotation in annotations:
+            fid = annotation.frame_id
+            if fid not in self.frame_annotations:
+                self.frame_annotations[fid] = []
+            self.frame_annotations[fid].append(annotation)
+        self.selected_object_id = annotations[-1].object_id
+        self._notify_change()
+
     def remove_annotation(self, frame_id: int, object_id: str) -> bool:
         """Remove an annotation by frame ID and object ID."""
         if frame_id in self.frame_annotations:

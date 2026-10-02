@@ -41,6 +41,7 @@ class VideoPanel(QWidget):
         super().__init__(parent)
         self.frame_cache = frame_cache
         self.frames: List[FrameMetadata] = []
+        self._icon_cache: Dict[str, QIcon] = {}
 
         self._setup_ui()
 
@@ -96,6 +97,7 @@ class VideoPanel(QWidget):
 
     def set_frames(self, frames: List[FrameMetadata]) -> None:
         """Populate the list with extracted frames."""
+        self._icon_cache.clear()
         self.frames = frames
         self.apply_filter()
 
@@ -143,12 +145,18 @@ class VideoPanel(QWidget):
             if frame.is_keyframe:
                 item.setForeground(QColor("#f59e0b"))
 
-            # Load thumbnail icon
-            thumb_bgr = self.frame_cache.get_thumbnail(frame.thumbnail_filename)
-            if thumb_bgr is not None:
-                qimg = bgr_to_qimage(thumb_bgr)
-                if qimg is not None:
-                    item.setIcon(QIcon(QPixmap.fromImage(qimg)))
+            # Load thumbnail icon from cache or disk
+            thumb_key = frame.thumbnail_filename
+            icon = self._icon_cache.get(thumb_key) if thumb_key else None
+            if icon is None and thumb_key:
+                thumb_bgr = self.frame_cache.get_thumbnail(thumb_key)
+                if thumb_bgr is not None:
+                    qimg = bgr_to_qimage(thumb_bgr)
+                    if qimg is not None:
+                        icon = QIcon(QPixmap.fromImage(qimg))
+                        self._icon_cache[thumb_key] = icon
+            if icon is not None:
+                item.setIcon(icon)
 
             self.list_widget.addItem(item)
             displayed_count += 1

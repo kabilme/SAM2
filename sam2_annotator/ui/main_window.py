@@ -134,6 +134,7 @@ class PropagationWorker(QThread):
 
     def run(self):
         try:
+            self.progress.emit(0, len(self.target_frames), "Preparing propagation models and frames...")
             results = self.service.propagate_object(
                 initial_annotation=self.initial_anno,
                 target_frames=self.target_frames,
@@ -142,6 +143,11 @@ class PropagationWorker(QThread):
                 source_frame_filename=self.source_frame_filename,
                 progress_callback=lambda cur, tot, msg: self.progress.emit(cur, tot, msg),
                 is_cancelled=lambda: self._cancelled,
+            )
+            self.progress.emit(
+                len(self.target_frames),
+                len(self.target_frames),
+                f"Finalizing {len(results)} tracked annotations in project...",
             )
             self.finished.emit(results)
         except Exception as e:
@@ -986,13 +992,34 @@ class MainWindow(QMainWindow):
         prog_diag.cancelled.connect(worker.cancel)
 
         def on_finished(new_annos: List[PolygonAnnotation]):
-            prog_diag.accept()
+            prog_diag.set_progress(
+                len(target_frames),
+                len(target_frames),
+                f"Applying {len(new_annos)} tracked annotations to project...",
+            )
+            self.status_bar.showMessage(f"Applying {len(new_annos)} tracked annotations to project...")
+            QApplication.processEvents()
+
+            # 1. Update frame review statuses in memory in batch
             for a in new_annos:
-                self.annotation_manager.add_annotation(a)
-                self._mark_frame_status(a.frame_id, "annotated")
-            self._on_annotations_updated()
-            self.status_bar.showMessage(f"Propagated object #{anno.object_id} using {pt_name} across {len(new_annos)} frames.", 4000)
-            QMessageBox.information(self, "Propagation Complete", f"Successfully propagated through {len(new_annos)} frames using {pt_name}.")
+                if 0 < a.frame_id <= len(self.project_manager.frames):
+                    self.project_manager.frames[a.frame_id - 1].review_status = "annotated"
+
+            # 2. Batch add annotations to manager (fires change listener exactly once)
+            self.annotation_manager.add_annotations(new_annos)
+
+            # 3. Close the progress dialog now that all processing is done
+            prog_diag.accept()
+
+            self.status_bar.showMessage(
+                f"Propagated object #{anno.object_id} using {pt_name} across {len(new_annos)} frames.",
+                5000,
+            )
+            QMessageBox.information(
+                self,
+                "Propagation Complete",
+                f"Successfully propagated through {len(new_annos)} frames using {pt_name}.",
+            )
 
         def on_error(err: str):
             prog_diag.reject()
