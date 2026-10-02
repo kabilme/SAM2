@@ -964,7 +964,13 @@ class MainWindow(QMainWindow):
             return
 
         pt_name = "Box Prompt" if prompt_type == "box" else ("Point Prompt" if prompt_type == "point" else "Combined")
+        logger.info(
+            "User requested propagation for object '%s' across %d frames (mode='%s', prompt='%s', pad=%.2f)",
+            anno.object_id, len(target_frames), mode, pt_name, pad_ratio
+        )
+        self.status_bar.showMessage(f"Starting propagation for object #{anno.object_id} ({len(target_frames)} frames)...")
         prog_diag = ProgressDialog(f"Propagating Object Tracking ({len(target_frames)} frames, {pt_name})...", self)
+        prog_diag.set_progress(0, len(target_frames), f"Preparing {len(target_frames)} frames for tracking [{pt_name}]...")
         worker = PropagationWorker(
             self.video_service,
             anno,
@@ -976,6 +982,7 @@ class MainWindow(QMainWindow):
         self.current_worker = worker
 
         worker.progress.connect(prog_diag.set_progress)
+        worker.progress.connect(lambda cur, tot, msg: self.status_bar.showMessage(f"Propagating object #{anno.object_id}: {msg}"))
         prog_diag.cancelled.connect(worker.cancel)
 
         def on_finished(new_annos: List[PolygonAnnotation]):

@@ -95,6 +95,18 @@ class SAM2VideoService:
         num_targets = len(target_frames)
         propagated_annotations: List[PolygonAnnotation] = []
 
+        logger.info(
+            "Starting native SAM 2.1 video propagation for object '%s' across %d frames (prompt_type='%s', padding=%.2f)...",
+            initial_annotation.object_id, num_targets, prompt_type, box_padding_ratio
+        )
+        if progress_callback:
+            pt_label = "Box Prompt" if prompt_type == "box" else ("Point Prompt" if prompt_type == "point" else "Combined")
+            progress_callback(
+                0,
+                num_targets,
+                f"Initializing SAM 2.1 spatio-temporal tracking across {num_targets} frames [{pt_label}]...",
+            )
+
         current_anno = initial_annotation
         current_ref_filename = source_frame_filename
 
@@ -104,6 +116,15 @@ class SAM2VideoService:
                 break
 
             chunk_targets = target_frames[chunk_start : chunk_start + chunk_size]
+            chunk_end = min(chunk_start + chunk_size, num_targets)
+            logger.info("Processing propagation chunk %d-%d of %d frames...", chunk_start + 1, chunk_end, num_targets)
+            if progress_callback:
+                progress_callback(
+                    chunk_start,
+                    num_targets,
+                    f"Loading frames {chunk_start + 1}-{chunk_end}/{num_targets} into memory...",
+                )
+
             chunk_results = self._propagate_chunk(
                 predictor=predictor,
                 initial_annotation=current_anno,
@@ -165,6 +186,14 @@ class SAM2VideoService:
                 return []
             frame_imgs.append(img)
 
+        logger.info(
+            "Preparing propagation chunk (%d frames, target frames %d-%d of %d)...",
+            len(frame_imgs),
+            global_step_offset + 1,
+            global_step_offset + len(target_frames),
+            total_target_count,
+        )
+
         # Build tensor batch
         img_size = getattr(predictor, "image_size", 1024)
         img_mean = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32)[:, None, None]
@@ -213,6 +242,10 @@ class SAM2VideoService:
             box_padding_ratio=box_padding_ratio,
             orig_w=orig_w,
             orig_h=orig_h,
+        )
+        logger.info(
+            "Reference frame '%s' conditioned. Running SAM 2.1 cross-frame memory attention tracking...",
+            source_frame_filename,
         )
 
         chunk_annotations: List[PolygonAnnotation] = []
@@ -272,9 +305,21 @@ class SAM2VideoService:
                 new_anno.bounding_box = compute_bounding_box(new_points)
                 chunk_annotations.append(new_anno)
 
+                cur_global = global_step_offset + out_frame_idx
+                pt_label = "Box Prompt" if prompt_type == "box" else ("Point Prompt" if prompt_type == "point" else "Combined")
+                pct = (cur_global / total_target_count) * 100
+                logger.info(
+                    "Propagated object '%s' to frame %d (%d/%d, %.1f%%) [conf=%.2f, vertices=%d]",
+                    initial_annotation.object_id,
+                    frame_meta.frame_id,
+                    cur_global,
+                    total_target_count,
+                    pct,
+                    conf,
+                    len(new_points),
+                )
+
                 if progress_callback:
-                    cur_global = global_step_offset + out_frame_idx
-                    pt_label = "Box Prompt" if prompt_type == "box" else ("Point Prompt" if prompt_type == "point" else "Combined")
                     progress_callback(
                         cur_global,
                         total_target_count,
@@ -288,6 +333,11 @@ class SAM2VideoService:
             del inference_state
             gc.collect()
 
+        logger.info(
+            "Chunk tracking finished: %d/%d frames tracked successfully in this chunk.",
+            len(chunk_annotations),
+            len(target_frames),
+        )
         return chunk_annotations
 
     def _condition_frame_0(
