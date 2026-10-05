@@ -458,8 +458,33 @@ SAM3/
 
 ## 22. License Notices
 
-- **SAM2 Video Polygon Annotator**: Licensed under the MIT License.
-- **Segment Anything 2 (SAM 2 / SAM 2.1)**: Developed by Meta AI Research, licensed under Apache 2.0.
-- **Ultralytics YOLO**: Developed by Ultralytics, licensed under AGPL-3.0 / Enterprise.
-- **OpenCV**: Licensed under Apache 2.0.
-- **PySide6**: Licensed under LGPL-3.0.
+The **SAM2 Video Polygon Annotator** is released as free and open-source software under the **[GNU Affero General Public License v3.0 (GNU AGPLv3)](LICENSE)**.
+
+This licensing guarantees that the software remains free and open-source forever, ensures 100% legal harmony with all dependencies (including Ultralytics YOLO), and prevents closed-source commercial exploitation of community contributions.
+
+### Integrated Component Licensing Matrix
+
+| Component / Library | Developer / Organization | License | Compatibility with AGPL-3.0 | Purpose / Role |
+| :--- | :--- | :--- | :---: | :--- |
+| **SAM2 Video Polygon Annotator** | Project Authors | **GNU AGPL-3.0** | Main License | Desktop GUI application, timeline & video annotation engine |
+| **Ultralytics YOLO** | Ultralytics Inc. | **AGPL-3.0** | Direct Match | Single-frame SAM fallback & YOLO dataset exporter schemas |
+| **Segment Anything 2.1 (SAM 2.1)** | Meta AI Research (FAIR) | **Apache 2.0** | Compatible | Hiera vision transformer weights & spatio-temporal video predictor |
+| **OpenCV** | OpenCV Team | **Apache 2.0** | Compatible | Video decoding, frame extraction, contour hierarchy & image I/O |
+| **PySide6 (Qt for Python)** | The Qt Company | **LGPL-3.0** | Compatible | Hardware-accelerated Qt GUI canvas, docks, dialogs & threads |
+
+---
+
+### Key Terms of the GNU AGPL-3.0 License
+
+1. **Open Source & Copyleft**:
+   - Anyone may run, modify, study, and distribute this software freely.
+   - If you modify this project or incorporate it into another software package, any distributed versions—including instances made accessible over a computer network (cloud SaaS)—**must also be released under the GNU AGPL-3.0 with source code made available**.
+
+2. **Internal Enterprise Use**:
+   - Commercial companies and academic labs may freely download, run, and utilize this desktop application internally across their organization without paying license fees or publishing private internal workflows.
+
+3. **User-Generated Datasets & Annotations (100% Yours)**:
+   - The AGPL-3.0 license applies **strictly to the software source code**, not to the data you produce.
+   - All polygon coordinates, bounding boxes, semantic masks, and exported training datasets generated using this tool belong **100% to you (the user)**.
+   - You may use, distribute, sell, or train closed-source proprietary commercial AI models on your exported datasets with zero restrictions.
+
