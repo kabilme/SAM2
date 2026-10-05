@@ -466,7 +466,7 @@ This licensing guarantees that the software remains free and open-source forever
 
 | Component / Library | Developer / Organization | License | Compatibility with AGPL-3.0 | Purpose / Role |
 | :--- | :--- | :--- | :---: | :--- |
-| **SAM2 Video Polygon Annotator** | Project Authors | **GNU AGPL-3.0** | Main License | Desktop GUI application, timeline & video annotation engine |
+| **SAM2 Video Polygon Annotator** | Kabilarasan | **GNU AGPL-3.0** | Main License | Desktop GUI application, timeline & video annotation engine |
 | **Ultralytics YOLO** | Ultralytics Inc. | **AGPL-3.0** | Direct Match | Single-frame SAM fallback & YOLO dataset exporter schemas |
 | **Segment Anything 2.1 (SAM 2.1)** | Meta AI Research (FAIR) | **Apache 2.0** | Compatible | Hiera vision transformer weights & spatio-temporal video predictor |
 | **OpenCV** | OpenCV Team | **Apache 2.0** | Compatible | Video decoding, frame extraction, contour hierarchy & image I/O |
