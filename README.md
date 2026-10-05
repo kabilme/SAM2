@@ -138,7 +138,7 @@ You can switch models dynamically in the application via **Edit > Settings** (`C
 
 ```bash
 # 1. Clone or navigate to the repository
-cd D:/SAM3
+cd D:/SAM2
 
 # 2. Create and activate a virtual environment
 python -m venv .venv
@@ -423,7 +423,7 @@ ui:
 ## 21. Repository Structure
 
 ```
-SAM3/
+SAM2/
 ├── main.py                     <- Unified application entry point (CLI & GUI)
 ├── requirements.txt            <- Python dependencies
 ├── pyproject.toml              <- Build & packaging configuration
