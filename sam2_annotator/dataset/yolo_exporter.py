@@ -233,15 +233,17 @@ class YOLOExporter(BaseDatasetExporter):
                         f"Exported {processed_count}/{total_frames} frames",
                     )
 
-        # Generate data.yaml
+        # Generate clean, platform-independent portable data.yaml
         data_yaml_path = self.output_dir / "data.yaml"
-        yaml_content = {
-            "path": ".",
+        yaml_content: Dict[str, Any] = {
             "train": "images/train",
             "val": "images/val",
-            "test": "images/test",
-            "names": {c.id: c.name for c in self.classes},
         }
+        test_dir = images_dir / "test"
+        if test_dir.exists() and any(test_dir.iterdir()):
+            yaml_content["test"] = "images/test"
+
+        yaml_content["names"] = {c.id: c.name for c in self.classes}
         with open(data_yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(yaml_content, f, default_flow_style=False, sort_keys=False)
 

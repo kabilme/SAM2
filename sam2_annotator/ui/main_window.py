@@ -41,6 +41,7 @@ from sam2_annotator.ui.export_dialog import ExportDialog
 from sam2_annotator.ui.settings_dialog import SettingsDialog
 from sam2_annotator.ui.progress_dialog import ProgressDialog
 from sam2_annotator.ui.delete_frame_dialog import DeleteFrameDialog
+from sam2_annotator.ui.training_dialog import TrainingDialog
 from sam2_annotator.utils.device_utils import get_system_diagnostics
 from sam2_annotator.utils.logging_utils import logger
 
@@ -462,6 +463,11 @@ class MainWindow(QMainWindow):
 
         val_act = data_menu.addAction("&Validate Exported Dataset...")
         val_act.triggered.connect(self.validate_dataset_dialog)
+
+        data_menu.addSeparator()
+        train_act = data_menu.addAction("&Train Model...")
+        train_act.setShortcut(QKeySequence("Ctrl+T"))
+        train_act.triggered.connect(self.open_train_dialog)
 
         # Settings & Help
         settings_menu = mb.addMenu("&Settings")
@@ -1382,6 +1388,31 @@ class MainWindow(QMainWindow):
             elif report["warnings"]:
                 msg += "\nTop Warnings:\n" + "\n".join(report["warnings"][:5])
             QMessageBox.information(self, "Dataset Validation", msg)
+
+    def open_train_dialog(self) -> None:
+        """Open the integrated deep learning training studio dialog."""
+        if not self.project_manager.frames:
+            QMessageBox.warning(self, "No Project", "Please open or create a project with video frames before training.")
+            return
+
+        annotated_count = sum(
+            1 for f in self.project_manager.frames
+            if len(self.annotation_manager.get_annotations_for_frame(f.frame_id)) > 0
+        )
+        if annotated_count == 0:
+            QMessageBox.warning(
+                self,
+                "No Annotations",
+                "There are no annotated frames in the project. Please annotate at least a few frames before training.",
+            )
+            return
+
+        diag = TrainingDialog(
+            project_manager=self.project_manager,
+            annotation_manager=self.annotation_manager,
+            parent=self,
+        )
+        diag.exec()
 
     def open_settings_dialog(self) -> None:
         diag = SettingsDialog(self.config, self)
