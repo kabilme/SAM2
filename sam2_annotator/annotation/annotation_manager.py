@@ -5,6 +5,7 @@ import copy
 
 from sam2_annotator.annotation.polygon import PolygonAnnotation
 from sam2_annotator.annotation.object_tracker import ObjectTracker
+from sam2_annotator.utils.geometry import compute_bbox_iou
 from sam2_annotator.utils.logging_utils import logger
 
 
@@ -53,21 +54,43 @@ class AnnotationManager:
         self.redo_stack.clear()
 
     def get_annotations_for_frame(self, frame_id: int) -> List[PolygonAnnotation]:
-        """Retrieve annotations for a specific frame."""
-        return self.frame_annotations.get(frame_id, [])
+        """Retrieve annotations for a specific frame, deduplicated by object_id."""
+        annos = self.frame_annotations.get(frame_id, [])
+        if not annos:
+            return []
+        unique: List[PolygonAnnotation] = []
+        seen = set()
+        for a in annos:
+            if a.object_id not in seen:
+                seen.add(a.object_id)
+                unique.append(a)
+        if len(unique) < len(annos):
+            self.frame_annotations[frame_id] = list(unique)
+        return unique
 
     def add_annotation(self, annotation: PolygonAnnotation) -> None:
-        """Add a new polygon annotation to its designated frame."""
+        """Add a new polygon annotation or replace existing annotation with the same object_id on this frame."""
         self._save_snapshot(f"Add object {annotation.object_id}")
         fid = annotation.frame_id
         if fid not in self.frame_annotations:
             self.frame_annotations[fid] = []
-        self.frame_annotations[fid].append(annotation)
+
+        existing_idx = None
+        for i, ea in enumerate(self.frame_annotations[fid]):
+            if ea.object_id == annotation.object_id:
+                existing_idx = i
+                break
+
+        if existing_idx is not None:
+            self.frame_annotations[fid][existing_idx] = annotation
+        else:
+            self.frame_annotations[fid].append(annotation)
+
         self.selected_object_id = annotation.object_id
         self._notify_change()
 
     def add_annotations(self, annotations: List[PolygonAnnotation]) -> None:
-        """Batch add polygon annotations across frames with a single undo snapshot and change notification."""
+        """Batch add or update polygon annotations across frames by object_id."""
         if not annotations:
             return
         self._save_snapshot(f"Batch add {len(annotations)} annotations")
@@ -75,9 +98,54 @@ class AnnotationManager:
             fid = annotation.frame_id
             if fid not in self.frame_annotations:
                 self.frame_annotations[fid] = []
-            self.frame_annotations[fid].append(annotation)
+
+            existing_idx = None
+            for i, ea in enumerate(self.frame_annotations[fid]):
+                if ea.object_id == annotation.object_id:
+                    existing_idx = i
+                    break
+
+            if existing_idx is not None:
+                self.frame_annotations[fid][existing_idx] = annotation
+            else:
+                self.frame_annotations[fid].append(annotation)
+
         self.selected_object_id = annotations[-1].object_id
         self._notify_change()
+
+    def deduplicate_all_frames(self) -> int:
+        """Deduplicate all frames across the project, returning total duplicates removed."""
+        removed_count = 0
+        for fid in list(self.frame_annotations.keys()):
+            annos = self.frame_annotations.get(fid, [])
+            if not annos:
+                continue
+            unique: List[PolygonAnnotation] = []
+            seen_ids = set()
+            for a in annos:
+                is_dup = False
+                if a.object_id in seen_ids:
+                    is_dup = True
+                else:
+                    for u in unique:
+                        if (
+                            u.class_id == a.class_id
+                            and u.bounding_box != (0.0, 0.0, 0.0, 0.0)
+                            and a.bounding_box != (0.0, 0.0, 0.0, 0.0)
+                            and compute_bbox_iou(u.bounding_box, a.bounding_box) >= 0.85
+                        ):
+                            is_dup = True
+                            break
+                if not is_dup:
+                    seen_ids.add(a.object_id)
+                    unique.append(a)
+            diff = len(annos) - len(unique)
+            if diff > 0:
+                removed_count += diff
+                self.frame_annotations[fid] = unique
+        if removed_count > 0:
+            self._notify_change()
+        return removed_count
 
     def remove_annotation(self, frame_id: int, object_id: str) -> bool:
         """Remove an annotation by frame ID and object ID."""

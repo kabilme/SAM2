@@ -205,3 +205,113 @@ def test_video_service_box_prompt_propagation(tmp_path, sample_frames):
         assert r.bounding_box != (0.0, 0.0, 0.0, 0.0)
         assert len(r.points) >= 3
 
+
+def test_properties_panel_multi_object_controls():
+    """Verify target combo behaves correctly when multiple objects are present in the keyframe."""
+    app = QApplication.instance() or QApplication([])
+
+    panel = PropertiesPanel()
+    anno1 = PolygonAnnotation(
+        object_id="obj_alpha",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=0,
+        class_name="person",
+        points=[(10, 10), (50, 10), (50, 50), (10, 50)],
+    )
+    anno2 = PolygonAnnotation(
+        object_id="obj_beta",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=1,
+        class_name="car",
+        points=[(60, 60), (120, 60), (120, 120), (60, 120)],
+    )
+
+    panel.set_annotations([anno1, anno2], selected_id="obj_alpha")
+    assert panel.prop_target_combo.isEnabled() is True
+    assert panel.prop_target_combo.itemText(0) == "All Objects in Frame (2)"
+    assert panel.propagation_target == "all"
+
+    # Default click emits "all" when multiple objects exist
+    emitted = []
+    panel.propagate_requested.connect(lambda obj_id, cnt, mode, pt: emitted.append((obj_id, cnt, mode, pt)))
+    panel.propagate_btn.click()
+
+    assert len(emitted) == 1
+    assert emitted[0][0] == "all"
+
+    # Switch to Selected Object Only
+    panel.prop_target_combo.setCurrentIndex(1)
+    assert panel.propagation_target == "selected"
+    panel.propagate_btn.click()
+    assert len(emitted) == 2
+    assert emitted[1][0] == "obj_alpha"
+
+
+def test_video_service_multi_object_propagation(tmp_path, sample_frames):
+    """Verify that SAM2VideoService propagates multiple objects simultaneously across frames."""
+    import numpy as np
+    import cv2
+    from sam2_annotator.models.sam2_adapter import MockSAM2Adapter
+    from sam2_annotator.models.sam2_video_service import SAM2VideoService
+    from sam2_annotator.video.frame_cache import FrameCache
+
+    frames_dir = tmp_path / "multi_frames"
+    thumbs_dir = tmp_path / "multi_thumbs"
+    frames_dir.mkdir()
+    thumbs_dir.mkdir()
+
+    for f in sample_frames:
+        dummy_img = np.zeros((480, 640, 3), dtype=np.uint8)
+        cv2.rectangle(dummy_img, (30, 30), (100, 100), (255, 255, 255), -1)
+        cv2.rectangle(dummy_img, (200, 200), (300, 300), (255, 255, 255), -1)
+        cv2.imwrite(str(frames_dir / f.filename), dummy_img)
+
+    frame_cache = FrameCache(frames_dir, thumbs_dir)
+    adapter = MockSAM2Adapter()
+    adapter.load_model()
+    service = SAM2VideoService(adapter, frame_cache)
+
+    anno1 = PolygonAnnotation(
+        object_id="multi_obj_1",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=0,
+        class_name="cat",
+        points=[(30, 30), (100, 30), (100, 100), (30, 100)],
+        bounding_box=(30.0, 30.0, 100.0, 100.0),
+    )
+    anno2 = PolygonAnnotation(
+        object_id="multi_obj_2",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=1,
+        class_name="dog",
+        points=[(200, 200), (300, 200), (300, 300), (200, 300)],
+        bounding_box=(200.0, 200.0, 300.0, 300.0),
+    )
+
+    # Propagate both objects across 2 subsequent frames
+    results = service.propagate_objects(
+        initial_annotations=[anno1, anno2],
+        target_frames=sample_frames[1:3],
+        prompt_type="box",
+        box_padding_ratio=0.0,
+        source_frame_filename=sample_frames[0].filename,
+    )
+
+    # 2 objects across 2 frames = 4 annotations
+    assert len(results) == 4
+    obj1_res = [r for r in results if r.object_id == "multi_obj_1"]
+    obj2_res = [r for r in results if r.object_id == "multi_obj_2"]
+    assert len(obj1_res) == 2
+    assert len(obj2_res) == 2
+    for r in obj1_res:
+        assert r.class_name == "cat"
+        assert r.tracking_status == "tracked"
+    for r in obj2_res:
+        assert r.class_name == "dog"
+        assert r.tracking_status == "tracked"
+
+

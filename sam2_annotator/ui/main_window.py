@@ -3,7 +3,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QIcon
@@ -114,7 +114,7 @@ class PropagationWorker(QThread):
     def __init__(
         self,
         service: SAM2VideoService,
-        initial_anno: PolygonAnnotation,
+        initial_anno: Union[PolygonAnnotation, List[PolygonAnnotation]],
         target_frames: List[FrameMetadata],
         prompt_type: str = "box",
         box_padding_ratio: float = 0.0,
@@ -122,7 +122,12 @@ class PropagationWorker(QThread):
     ):
         super().__init__()
         self.service = service
-        self.initial_anno = initial_anno
+        if isinstance(initial_anno, list):
+            self.initial_annos = list(initial_anno)
+            self.initial_anno = self.initial_annos[0] if self.initial_annos else None
+        else:
+            self.initial_anno = initial_anno
+            self.initial_annos = [initial_anno] if initial_anno else []
         self.target_frames = target_frames
         self.prompt_type = prompt_type
         self.box_padding_ratio = box_padding_ratio
@@ -134,9 +139,11 @@ class PropagationWorker(QThread):
 
     def run(self):
         try:
-            self.progress.emit(0, len(self.target_frames), "Preparing propagation models and frames...")
-            results = self.service.propagate_object(
-                initial_annotation=self.initial_anno,
+            num_objs = len(self.initial_annos)
+            obj_desc = f"{num_objs} objects" if num_objs > 1 else "object"
+            self.progress.emit(0, len(self.target_frames), f"Preparing propagation models and frames for {obj_desc}...")
+            results = self.service.propagate_objects(
+                initial_annotations=self.initial_annos,
                 target_frames=self.target_frames,
                 prompt_type=self.prompt_type,
                 box_padding_ratio=self.box_padding_ratio,
@@ -415,10 +422,18 @@ class MainWindow(QMainWindow):
         del_frame_act.setShortcut(QKeySequence("Ctrl+Delete"))
         del_frame_act.triggered.connect(self.delete_current_frame)
 
+        edit_menu.addSeparator()
+        dedup_act = edit_menu.addAction("&Remove Duplicate Overlapping Objects")
+        dedup_act.setShortcut(QKeySequence("Ctrl+D"))
+        dedup_act.triggered.connect(self._deduplicate_all_frames_action)
+
         # Annotation Menu
         anno_menu = mb.addMenu("&Annotation")
         clear_frame_act = anno_menu.addAction("&Clear Frame Annotations")
         clear_frame_act.triggered.connect(self._clear_current_frame)
+
+        dedup_cur_act = anno_menu.addAction("&Deduplicate Current Frame")
+        dedup_cur_act.triggered.connect(self._deduplicate_current_frame_action)
 
         mark_rev_act = anno_menu.addAction("Mark Frame &Reviewed")
         mark_rev_act.setShortcut(QKeySequence("R"))
@@ -903,11 +918,18 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "SAM 2", f"Segmented {count} instances for '{text}'")
 
     def _on_propagate_action_triggered(self) -> None:
-        """Trigger propagation from menu or shortcut for the currently selected object."""
-        if self.annotation_manager.selected_object_id:
+        """Trigger propagation from menu or shortcut for keyframe objects."""
+        fid = self.annotation_manager.active_frame_id
+        annos = self.annotation_manager.get_annotations_for_frame(fid)
+        if not annos:
+            QMessageBox.information(self, "Propagate", "Active frame has no annotations to propagate.")
+            return
+
+        target_mode = getattr(self.properties_panel, "propagation_target", "all")
+        if target_mode == "selected" and self.annotation_manager.selected_object_id:
             self._on_propagate_requested(self.annotation_manager.selected_object_id)
         else:
-            QMessageBox.information(self, "Propagate", "Please select an object in the active frame to propagate.")
+            self._on_propagate_requested("all")
 
     def _on_propagate_requested(
         self,
@@ -917,11 +939,22 @@ class MainWindow(QMainWindow):
         prompt_type: Optional[str] = None,
     ) -> None:
         fid = self.annotation_manager.active_frame_id
-        anno = self.annotation_manager.get_annotation_by_id(fid, object_id)
-        if not anno:
-            anno = self.annotation_manager.get_selected_annotation(fid)
-        if not anno:
-            return
+        if object_id == "all":
+            raw_annos = self.annotation_manager.get_annotations_for_frame(fid)
+            unique_map: Dict[str, PolygonAnnotation] = {}
+            for a in raw_annos:
+                unique_map[a.object_id] = a
+            annos_to_propagate = list(unique_map.values())
+            if not annos_to_propagate:
+                QMessageBox.information(self, "Tracking", "No annotations found in active frame to propagate.")
+                return
+        else:
+            anno = self.annotation_manager.get_annotation_by_id(fid, object_id)
+            if not anno:
+                anno = self.annotation_manager.get_selected_annotation(fid)
+            if not anno:
+                return
+            annos_to_propagate = [anno]
 
         total_f = len(self.project_manager.frames)
         if fid >= total_f:
@@ -970,16 +1003,19 @@ class MainWindow(QMainWindow):
             return
 
         pt_name = "Box Prompt" if prompt_type == "box" else ("Point Prompt" if prompt_type == "point" else "Combined")
+        num_objs = len(annos_to_propagate)
+        obj_desc = f"{num_objs} objects" if num_objs > 1 else f"object #{annos_to_propagate[0].object_id[:8]}"
+
         logger.info(
-            "User requested propagation for object '%s' across %d frames (mode='%s', prompt='%s', pad=%.2f)",
-            anno.object_id, len(target_frames), mode, pt_name, pad_ratio
+            "User requested propagation for %s across %d frames (mode='%s', prompt='%s', pad=%.2f)",
+            obj_desc, len(target_frames), mode, pt_name, pad_ratio
         )
-        self.status_bar.showMessage(f"Starting propagation for object #{anno.object_id} ({len(target_frames)} frames)...")
-        prog_diag = ProgressDialog(f"Propagating Object Tracking ({len(target_frames)} frames, {pt_name})...", self)
-        prog_diag.set_progress(0, len(target_frames), f"Preparing {len(target_frames)} frames for tracking [{pt_name}]...")
+        self.status_bar.showMessage(f"Starting propagation for {obj_desc} ({len(target_frames)} frames)...")
+        prog_diag = ProgressDialog(f"Propagating {obj_desc} ({len(target_frames)} frames, {pt_name})...", self)
+        prog_diag.set_progress(0, len(target_frames), f"Preparing {len(target_frames)} frames for tracking {obj_desc} [{pt_name}]...")
         worker = PropagationWorker(
             self.video_service,
-            anno,
+            annos_to_propagate,
             target_frames,
             prompt_type=prompt_type,
             box_padding_ratio=pad_ratio,
@@ -988,7 +1024,7 @@ class MainWindow(QMainWindow):
         self.current_worker = worker
 
         worker.progress.connect(prog_diag.set_progress)
-        worker.progress.connect(lambda cur, tot, msg: self.status_bar.showMessage(f"Propagating object #{anno.object_id}: {msg}"))
+        worker.progress.connect(lambda cur, tot, msg: self.status_bar.showMessage(f"Propagating {obj_desc}: {msg}"))
         prog_diag.cancelled.connect(worker.cancel)
 
         def on_finished(new_annos: List[PolygonAnnotation]):
@@ -1012,13 +1048,13 @@ class MainWindow(QMainWindow):
             prog_diag.accept()
 
             self.status_bar.showMessage(
-                f"Propagated object #{anno.object_id} using {pt_name} across {len(new_annos)} frames.",
+                f"Propagated {obj_desc} using {pt_name} across {len(new_annos)} annotations in {len(target_frames)} frames.",
                 5000,
             )
             QMessageBox.information(
                 self,
                 "Propagation Complete",
-                f"Successfully propagated through {len(new_annos)} frames using {pt_name}.",
+                f"Successfully propagated {obj_desc} through {len(target_frames)} frames ({len(new_annos)} annotations created) using {pt_name}.",
             )
 
         def on_error(err: str):
@@ -1042,6 +1078,51 @@ class MainWindow(QMainWindow):
     def _clear_current_frame(self) -> None:
         fid = self.annotation_manager.active_frame_id
         self.annotation_manager.clear_frame_annotations(fid)
+
+    def _deduplicate_all_frames_action(self) -> None:
+        """Scan all frames across project and remove duplicate overlapping annotations."""
+        if not self.project_manager.project_dir:
+            return
+        removed = self.annotation_manager.deduplicate_all_frames()
+        fid = self.annotation_manager.active_frame_id
+        annos = self.annotation_manager.get_annotations_for_frame(fid)
+        self.canvas.set_annotations(annos)
+        self.properties_panel.set_annotations(annos)
+        self.status_objects_label.setText(f"Objects: {len(annos)}")
+        self.project_manager.is_dirty = True
+        self.status_save_label.setText("Modified*")
+        QMessageBox.information(
+            self,
+            "Deduplicate Annotations",
+            f"Removed {removed} duplicate overlapping object(s) across all frames."
+            if removed > 0
+            else "No duplicate overlapping objects found."
+        )
+
+    def _deduplicate_current_frame_action(self) -> None:
+        """Deduplicate overlapping annotations on the current frame."""
+        fid = self.annotation_manager.active_frame_id
+        before_count = len(self.annotation_manager.frame_annotations.get(fid, []))
+        annos = self.annotation_manager.get_annotations_for_frame(fid)
+        after_count = len(annos)
+        removed = before_count - after_count
+        self.canvas.set_annotations(annos)
+        self.properties_panel.set_annotations(annos)
+        self.status_objects_label.setText(f"Objects: {len(annos)}")
+        if removed > 0:
+            self.project_manager.is_dirty = True
+            self.status_save_label.setText("Modified*")
+            QMessageBox.information(
+                self,
+                "Deduplicate Current Frame",
+                f"Removed {removed} duplicate object(s) from current frame."
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "Deduplicate Current Frame",
+                "No duplicate objects found on current frame."
+            )
 
     def _mark_frame_reviewed(self) -> None:
         fid = self.annotation_manager.active_frame_id

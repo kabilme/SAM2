@@ -176,3 +176,95 @@ def test_native_video_predictor_propagation(tmp_path):
     adapter.release()
     assert adapter._video_predictor is None
 
+
+@pytest.mark.skipif(
+    not (Path("sam2.1_hiera_tiny.pt").exists() or Path("sam2.1_t.pt").exists()),
+    reason="SAM model checkpoint not present locally",
+)
+def test_native_video_predictor_multi_object_propagation(tmp_path):
+    """Verify Meta SAM 2.1 Video Predictor propagates multiple objects simultaneously."""
+    from sam2_annotator.models.sam2_video_service import SAM2VideoService
+    from sam2_annotator.video.frame_cache import FrameCache
+    from sam2_annotator.video.frame_extractor import FrameMetadata
+    from sam2_annotator.annotation.polygon import PolygonAnnotation
+
+    frames_dir = tmp_path / "frames"
+    thumbs_dir = tmp_path / "thumbs"
+    frames_dir.mkdir()
+    thumbs_dir.mkdir()
+
+    frame_metas = []
+    w, h = 320, 240
+    for i in range(3):
+        fname = f"frame_{i:04d}.jpg"
+        img = np.zeros((h, w, 3), dtype=np.uint8)
+        # Object 1 (top-left)
+        x1_1 = 30 + i * 5
+        y1_1 = 30 + i * 2
+        cv2.rectangle(img, (x1_1, y1_1), (x1_1 + 50, y1_1 + 50), (255, 255, 255), -1)
+        # Object 2 (bottom-right)
+        x1_2 = 180 - i * 5
+        y1_2 = 140 - i * 2
+        cv2.rectangle(img, (x1_2, y1_2), (x1_2 + 60, y1_2 + 60), (200, 200, 200), -1)
+        cv2.imwrite(str(frames_dir / fname), img)
+        frame_metas.append(FrameMetadata(
+            frame_id=i + 1,
+            source_frame_index=i,
+            timestamp_seconds=i * 0.033,
+            filename=fname,
+            width=w,
+            height=h,
+            is_keyframe=(i == 0),
+        ))
+
+    ckpt = "sam2.1_hiera_tiny.pt" if Path("sam2.1_hiera_tiny.pt").exists() else "sam2.1_t.pt"
+    adapter = SAM2LocalAdapter()
+    adapter.load_model(checkpoint_path=ckpt, device="cpu")
+    assert adapter.is_loaded()
+
+    vp = adapter.get_video_predictor()
+    assert vp is not None
+
+    frame_cache = FrameCache(frames_dir, thumbs_dir)
+    service = SAM2VideoService(adapter, frame_cache)
+
+    anno1 = PolygonAnnotation(
+        object_id="multi_native_obj_1",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=0,
+        class_name="square_a",
+        points=[(30, 30), (80, 30), (80, 80), (30, 80)],
+        bounding_box=(30.0, 30.0, 80.0, 80.0),
+    )
+    anno2 = PolygonAnnotation(
+        object_id="multi_native_obj_2",
+        frame_id=1,
+        source_frame_index=0,
+        class_id=1,
+        class_name="square_b",
+        points=[(180, 140), (240, 140), (240, 200), (180, 200)],
+        bounding_box=(180.0, 140.0, 240.0, 200.0),
+    )
+
+    results = service.propagate_objects(
+        initial_annotations=[anno1, anno2],
+        target_frames=frame_metas[1:],
+        prompt_type="box",
+        box_padding_ratio=0.0,
+        source_frame_filename=frame_metas[0].filename,
+    )
+
+    # 2 objects across 2 frames = 4 annotations
+    assert len(results) == 4
+    obj1_res = [r for r in results if r.object_id == "multi_native_obj_1"]
+    obj2_res = [r for r in results if r.object_id == "multi_native_obj_2"]
+    assert len(obj1_res) == 2
+    assert len(obj2_res) == 2
+    for r in results:
+        assert r.tracking_status == "tracked"
+        assert len(r.points) >= 3
+
+    adapter.release()
+
+

@@ -12,7 +12,7 @@ from sam2_annotator.annotation.polygon import PolygonAnnotation
 from sam2_annotator.annotation.mask_to_polygon import mask_to_polygons
 from sam2_annotator.video.frame_cache import FrameCache
 from sam2_annotator.video.frame_extractor import FrameMetadata
-from sam2_annotator.utils.geometry import calculate_polygon_centroid, compute_bounding_box
+from sam2_annotator.utils.geometry import calculate_polygon_centroid, compute_bounding_box, compute_bbox_iou
 from sam2_annotator.utils.logging_utils import logger
 
 
@@ -23,9 +23,9 @@ class SAM2VideoService:
         self.adapter = adapter
         self.frame_cache = frame_cache
 
-    def propagate_object(
+    def propagate_objects(
         self,
-        initial_annotation: PolygonAnnotation,
+        initial_annotations: List[PolygonAnnotation],
         target_frames: List[FrameMetadata],
         prompt_type: str = "box",
         box_padding_ratio: float = 0.0,
@@ -35,9 +35,33 @@ class SAM2VideoService:
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         is_cancelled: Optional[Callable[[], bool]] = None,
     ) -> List[PolygonAnnotation]:
-        """Propagate an object polygon annotation across target frames using Meta SAM 2.1 spatio-temporal memory attention."""
-        if not target_frames:
+        """Propagate multiple object polygon annotations across target frames using Meta SAM 2.1 spatio-temporal memory attention."""
+        if not target_frames or not initial_annotations:
             return []
+
+        # Deduplicate initial annotations by object_id AND spatial overlap (IoU >= 0.85 for same class)
+        unique_initial: List[PolygonAnnotation] = []
+        for anno in initial_annotations:
+            is_dup = False
+            for existing in unique_initial:
+                if existing.object_id == anno.object_id:
+                    is_dup = True
+                    break
+                if (
+                    existing.class_id == anno.class_id
+                    and existing.bounding_box != (0.0, 0.0, 0.0, 0.0)
+                    and anno.bounding_box != (0.0, 0.0, 0.0, 0.0)
+                    and compute_bbox_iou(existing.bounding_box, anno.bounding_box) >= 0.85
+                ):
+                    logger.warning(
+                        "Dropping duplicate keyframe object '%s' heavily overlapping with '%s' (IoU >= 0.85)",
+                        anno.object_id, existing.object_id
+                    )
+                    is_dup = True
+                    break
+            if not is_dup:
+                unique_initial.append(anno)
+        initial_annotations = unique_initial
 
         # 1. Attempt native Meta SAM 2.1 Video Predictor with temporal memory attention
         if hasattr(self.adapter, "get_video_predictor"):
@@ -46,7 +70,7 @@ class SAM2VideoService:
                 if predictor is not None:
                     native_results = self._propagate_with_native_video_predictor(
                         predictor=predictor,
-                        initial_annotation=initial_annotation,
+                        initial_annotations=initial_annotations,
                         target_frames=target_frames,
                         prompt_type=prompt_type,
                         box_padding_ratio=box_padding_ratio,
@@ -63,7 +87,32 @@ class SAM2VideoService:
 
         # 2. Fallback: Frame-by-frame tracker (for mock adapters or offline environments)
         return self._propagate_frame_by_frame(
-            initial_annotation=initial_annotation,
+            initial_annotations=initial_annotations,
+            target_frames=target_frames,
+            prompt_type=prompt_type,
+            box_padding_ratio=box_padding_ratio,
+            simplify_tolerance=simplify_tolerance,
+            min_area=min_area,
+            source_frame_filename=source_frame_filename,
+            progress_callback=progress_callback,
+            is_cancelled=is_cancelled,
+        )
+
+    def propagate_object(
+        self,
+        initial_annotation: PolygonAnnotation,
+        target_frames: List[FrameMetadata],
+        prompt_type: str = "box",
+        box_padding_ratio: float = 0.0,
+        simplify_tolerance: float = 0.005,
+        min_area: float = 20.0,
+        source_frame_filename: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
+    ) -> List[PolygonAnnotation]:
+        """Backwards-compatible wrapper to propagate a single object polygon annotation."""
+        return self.propagate_objects(
+            initial_annotations=[initial_annotation],
             target_frames=target_frames,
             prompt_type=prompt_type,
             box_padding_ratio=box_padding_ratio,
@@ -77,7 +126,7 @@ class SAM2VideoService:
     def _propagate_with_native_video_predictor(
         self,
         predictor: Any,
-        initial_annotation: PolygonAnnotation,
+        initial_annotations: List[PolygonAnnotation],
         target_frames: List[FrameMetadata],
         prompt_type: str,
         box_padding_ratio: float,
@@ -93,21 +142,22 @@ class SAM2VideoService:
 
         chunk_size = 60
         num_targets = len(target_frames)
+        num_objs = len(initial_annotations)
         propagated_annotations: List[PolygonAnnotation] = []
 
         logger.info(
-            "Starting native SAM 2.1 video propagation for object '%s' across %d frames (prompt_type='%s', padding=%.2f)...",
-            initial_annotation.object_id, num_targets, prompt_type, box_padding_ratio
+            "Starting native SAM 2.1 video propagation for %d objects across %d frames (prompt_type='%s', padding=%.2f)...",
+            num_objs, num_targets, prompt_type, box_padding_ratio
         )
         if progress_callback:
             pt_label = "Box Prompt" if prompt_type == "box" else ("Point Prompt" if prompt_type == "point" else "Combined")
             progress_callback(
                 0,
                 num_targets,
-                f"Initializing SAM 2.1 spatio-temporal tracking across {num_targets} frames [{pt_label}]...",
+                f"Initializing SAM 2.1 tracking for {num_objs} object(s) across {num_targets} frames [{pt_label}]...",
             )
 
-        current_anno = initial_annotation
+        current_annos = list(initial_annotations)
         current_ref_filename = source_frame_filename
 
         for chunk_start in range(0, num_targets, chunk_size):
@@ -117,17 +167,20 @@ class SAM2VideoService:
 
             chunk_targets = target_frames[chunk_start : chunk_start + chunk_size]
             chunk_end = min(chunk_start + chunk_size, num_targets)
-            logger.info("Processing propagation chunk %d-%d of %d frames...", chunk_start + 1, chunk_end, num_targets)
+            logger.info(
+                "Processing propagation chunk %d-%d of %d frames for %d objects...",
+                chunk_start + 1, chunk_end, num_targets, len(current_annos)
+            )
             if progress_callback:
                 progress_callback(
                     chunk_start,
                     num_targets,
-                    f"Loading frames {chunk_start + 1}-{chunk_end}/{num_targets} into memory...",
+                    f"Loading frames {chunk_start + 1}-{chunk_end}/{num_targets} into memory ({len(current_annos)} objects)...",
                 )
 
             chunk_results = self._propagate_chunk(
                 predictor=predictor,
-                initial_annotation=current_anno,
+                initial_annotations=current_annos,
                 target_frames=chunk_targets,
                 prompt_type=prompt_type,
                 box_padding_ratio=box_padding_ratio,
@@ -145,20 +198,31 @@ class SAM2VideoService:
                 break
 
             propagated_annotations.extend(chunk_results)
-            # Chain the latest tracked annotation and frame as reference for the next chunk
-            current_anno = chunk_results[-1]
-            current_ref_filename = chunk_targets[len(chunk_results) - 1].filename
+
+            # Chain the latest tracked annotations for each object as reference for the next chunk
+            latest_per_obj: Dict[str, PolygonAnnotation] = {}
+            for a in chunk_results:
+                latest_per_obj[a.object_id] = a
+
+            next_annos = []
+            for prev_a in current_annos:
+                if prev_a.object_id in latest_per_obj:
+                    next_annos.append(latest_per_obj[prev_a.object_id])
+                else:
+                    next_annos.append(prev_a)
+            current_annos = next_annos
+            current_ref_filename = chunk_targets[len(chunk_targets) - 1].filename
 
         logger.info(
-            "Native SAM 2.1 video propagation finished: produced %d annotations for object %s across %d frames",
-            len(propagated_annotations), initial_annotation.object_id, num_targets
+            "Native SAM 2.1 video propagation finished: produced %d annotations for %d objects across %d frames",
+            len(propagated_annotations), num_objs, num_targets
         )
         return propagated_annotations
 
     def _propagate_chunk(
         self,
         predictor: Any,
-        initial_annotation: PolygonAnnotation,
+        initial_annotations: List[PolygonAnnotation],
         target_frames: List[FrameMetadata],
         prompt_type: str,
         box_padding_ratio: float,
@@ -170,7 +234,7 @@ class SAM2VideoService:
         progress_callback: Optional[Callable[[int, int, str], None]],
         is_cancelled: Optional[Callable[[], bool]],
     ) -> List[PolygonAnnotation]:
-        """Run SAM 2.1 temporal memory propagation on a single bounded chunk of frames."""
+        """Run SAM 2.1 temporal memory propagation on a single bounded chunk of frames for multiple objects."""
         ref_img = self.frame_cache.get_frame(source_frame_filename)
         if ref_img is None:
             logger.warning("Could not load reference frame %s", source_frame_filename)
@@ -187,11 +251,12 @@ class SAM2VideoService:
             frame_imgs.append(img)
 
         logger.info(
-            "Preparing propagation chunk (%d frames, target frames %d-%d of %d)...",
+            "Preparing propagation chunk (%d frames, target frames %d-%d of %d, %d objects)...",
             len(frame_imgs),
             global_step_offset + 1,
             global_step_offset + len(target_frames),
             total_target_count,
+            len(initial_annotations),
         )
 
         # Build tensor batch
@@ -231,21 +296,28 @@ class SAM2VideoService:
             "temp_output_dict_per_obj": {},
             "frames_tracked_per_obj": {},
         }
-        predictor._get_image_feature(inference_state, frame_idx=0, batch_size=1)
+        num_objs = len(initial_annotations)
+        predictor._get_image_feature(inference_state, frame_idx=0, batch_size=num_objs)
 
-        # Condition frame 0
-        self._condition_frame_0(
-            predictor=predictor,
-            inference_state=inference_state,
-            initial_annotation=initial_annotation,
-            prompt_type=prompt_type,
-            box_padding_ratio=box_padding_ratio,
-            orig_w=orig_w,
-            orig_h=orig_h,
-        )
+        # Condition frame 0 for all target objects
+        obj_id_to_anno: Dict[int, PolygonAnnotation] = {}
+        for idx, anno in enumerate(initial_annotations):
+            obj_id = idx + 1
+            obj_id_to_anno[obj_id] = anno
+            self._condition_frame_0(
+                predictor=predictor,
+                inference_state=inference_state,
+                initial_annotation=anno,
+                prompt_type=prompt_type,
+                box_padding_ratio=box_padding_ratio,
+                orig_w=orig_w,
+                orig_h=orig_h,
+                obj_id=obj_id,
+            )
+
         logger.info(
-            "Reference frame '%s' conditioned. Running SAM 2.1 cross-frame memory attention tracking...",
-            source_frame_filename,
+            "Reference frame '%s' conditioned with %d object(s). Running SAM 2.1 cross-frame memory attention tracking...",
+            source_frame_filename, num_objs
         )
 
         chunk_annotations: List[PolygonAnnotation] = []
@@ -264,66 +336,77 @@ class SAM2VideoService:
                     break
                 frame_meta = target_frames[target_idx]
 
-                mask_prob = torch.sigmoid(out_mask_logits[0, 0]).cpu().numpy()
-                mask_bin = (mask_prob > 0.5).astype(np.uint8) * 255
+                for i, obj_id in enumerate(out_obj_ids):
+                    orig_anno = obj_id_to_anno.get(obj_id)
+                    if not orig_anno:
+                        continue
 
-                if np.count_nonzero(mask_bin) == 0:
-                    logger.warning("Object %s lost or occluded on frame %d", initial_annotation.object_id, frame_meta.frame_id)
-                    continue
+                    if out_mask_logits.dim() == 4:
+                        logit = out_mask_logits[i, 0]
+                    elif out_mask_logits.dim() == 3:
+                        logit = out_mask_logits[i]
+                    else:
+                        logit = out_mask_logits
 
-                candidate_polys = mask_to_polygons(
-                    mask_bin,
-                    tolerance_ratio=simplify_tolerance,
-                    min_area=min_area,
-                    only_largest_contour=True,
-                )
-                if not candidate_polys:
+                    mask_prob = torch.sigmoid(logit).cpu().numpy()
+                    mask_bin = (mask_prob > 0.5).astype(np.uint8) * 255
+
+                    if np.count_nonzero(mask_bin) == 0:
+                        logger.warning("Object %s lost or occluded on frame %d", orig_anno.object_id, frame_meta.frame_id)
+                        continue
+
                     candidate_polys = mask_to_polygons(
                         mask_bin,
                         tolerance_ratio=simplify_tolerance,
                         min_area=min_area,
-                        only_largest_contour=False,
+                        only_largest_contour=True,
                     )
-                if not candidate_polys:
-                    continue
+                    if not candidate_polys:
+                        candidate_polys = mask_to_polygons(
+                            mask_bin,
+                            tolerance_ratio=simplify_tolerance,
+                            min_area=min_area,
+                            only_largest_contour=False,
+                        )
+                    if not candidate_polys:
+                        continue
 
-                new_points = candidate_polys[0]
-                fg_probs = mask_prob[mask_bin > 0]
-                conf = float(np.mean(fg_probs)) if len(fg_probs) > 0 else 0.95
+                    new_points = candidate_polys[0]
+                    fg_probs = mask_prob[mask_bin > 0]
+                    conf = float(np.mean(fg_probs)) if len(fg_probs) > 0 else 0.95
 
-                new_anno = PolygonAnnotation(
-                    object_id=initial_annotation.object_id,
-                    class_id=initial_annotation.class_id,
-                    class_name=initial_annotation.class_name,
-                    frame_id=frame_meta.frame_id,
-                    source_frame_index=frame_meta.source_frame_index,
-                    points=new_points,
-                    confidence=conf,
-                    source=source_tag,
-                    tracking_status="tracked",
-                )
-                new_anno.bounding_box = compute_bounding_box(new_points)
-                chunk_annotations.append(new_anno)
+                    new_anno = PolygonAnnotation(
+                        object_id=orig_anno.object_id,
+                        class_id=orig_anno.class_id,
+                        class_name=orig_anno.class_name,
+                        frame_id=frame_meta.frame_id,
+                        source_frame_index=frame_meta.source_frame_index,
+                        points=new_points,
+                        confidence=conf,
+                        source=source_tag,
+                        tracking_status="tracked",
+                    )
+                    new_anno.bounding_box = compute_bounding_box(new_points)
+                    chunk_annotations.append(new_anno)
 
                 cur_global = global_step_offset + out_frame_idx
                 pt_label = "Box Prompt" if prompt_type == "box" else ("Point Prompt" if prompt_type == "point" else "Combined")
                 pct = (cur_global / total_target_count) * 100
                 logger.info(
-                    "Propagated object '%s' to frame %d (%d/%d, %.1f%%) [conf=%.2f, vertices=%d]",
-                    initial_annotation.object_id,
+                    "Propagated %d object(s) to frame %d (%d/%d, %.1f%%) [%s]",
+                    len(out_obj_ids),
                     frame_meta.frame_id,
                     cur_global,
                     total_target_count,
                     pct,
-                    conf,
-                    len(new_points),
+                    pt_label,
                 )
 
                 if progress_callback:
                     progress_callback(
                         cur_global,
                         total_target_count,
-                        f"Propagated object to frame {frame_meta.frame_id} ({cur_global}/{total_target_count}) [{pt_label}]",
+                        f"Propagating {len(out_obj_ids)} object(s) to frame {frame_meta.frame_id} ({cur_global}/{total_target_count}) [{pt_label}]",
                     )
         finally:
             try:
@@ -334,7 +417,7 @@ class SAM2VideoService:
             gc.collect()
 
         logger.info(
-            "Chunk tracking finished: %d/%d frames tracked successfully in this chunk.",
+            "Chunk tracking finished: %d annotations created across %d target frames in this chunk.",
             len(chunk_annotations),
             len(target_frames),
         )
@@ -349,8 +432,9 @@ class SAM2VideoService:
         box_padding_ratio: float,
         orig_w: int,
         orig_h: int,
+        obj_id: int = 1,
     ) -> None:
-        """Condition the keyframe on frame 0 with bounding box, interior centroid, or mask prompts."""
+        """Condition the keyframe on frame 0 with bounding box, interior centroid, or mask prompts for a specific object."""
         current_box = initial_annotation.bounding_box
         if not current_box or current_box == (0.0, 0.0, 0.0, 0.0):
             current_box = compute_bounding_box(initial_annotation.points)
@@ -385,16 +469,14 @@ class SAM2VideoService:
             predictor.add_new_points_or_box(
                 inference_state=inference_state,
                 frame_idx=0,
-                obj_id=1,
+                obj_id=obj_id,
                 box=box_np,
-                points=pts_np,
-                labels=labels_np,
             )
         elif prompt_type == "point":
             predictor.add_new_points_or_box(
                 inference_state=inference_state,
                 frame_idx=0,
-                obj_id=1,
+                obj_id=obj_id,
                 points=pts_np,
                 labels=labels_np,
             )
@@ -405,14 +487,14 @@ class SAM2VideoService:
             predictor.add_new_mask(
                 inference_state=inference_state,
                 frame_idx=0,
-                obj_id=1,
+                obj_id=obj_id,
                 mask=(mask_np > 0),
             )
         else:  # "combined"
             predictor.add_new_points_or_box(
                 inference_state=inference_state,
                 frame_idx=0,
-                obj_id=1,
+                obj_id=obj_id,
                 box=box_np,
                 points=pts_np,
                 labels=labels_np,
@@ -420,7 +502,7 @@ class SAM2VideoService:
 
     def _propagate_frame_by_frame(
         self,
-        initial_annotation: PolygonAnnotation,
+        initial_annotations: List[PolygonAnnotation],
         target_frames: List[FrameMetadata],
         prompt_type: str = "box",
         box_padding_ratio: float = 0.0,
@@ -433,15 +515,23 @@ class SAM2VideoService:
         """Fallback optical-flow frame-by-frame propagation for MockSAM2Adapter or environments without native video weights."""
         propagated_annotations: List[PolygonAnnotation] = []
         total = len(target_frames)
-        if total == 0:
+        if total == 0 or not initial_annotations:
             return propagated_annotations
 
-        current_box = initial_annotation.bounding_box
-        if not current_box or current_box == (0.0, 0.0, 0.0, 0.0):
-            current_box = compute_bounding_box(initial_annotation.points)
-
-        current_centroid = calculate_polygon_centroid(initial_annotation.points)
-        current_pts = np.array(initial_annotation.points, dtype=np.float32)
+        # Initialize tracking state for each object
+        obj_states = []
+        for anno in initial_annotations:
+            box = anno.bounding_box
+            if not box or box == (0.0, 0.0, 0.0, 0.0):
+                box = compute_bounding_box(anno.points)
+            centroid = calculate_polygon_centroid(anno.points)
+            pts = np.array(anno.points, dtype=np.float32)
+            obj_states.append({
+                "orig_anno": anno,
+                "current_box": box,
+                "current_pts": pts,
+                "current_centroid": centroid,
+            })
 
         prev_gray: Optional[np.ndarray] = None
         if source_frame_filename:
@@ -450,8 +540,8 @@ class SAM2VideoService:
                 prev_gray = cv2.cvtColor(ref_img, cv2.COLOR_BGR2GRAY)
 
         logger.info(
-            "Starting fallback frame-by-frame propagation for object %s across %d frames using prompt_type='%s'",
-            initial_annotation.object_id, total, prompt_type
+            "Starting fallback frame-by-frame propagation for %d objects across %d frames using prompt_type='%s'",
+            len(initial_annotations), total, prompt_type
         )
 
         for step, frame_meta in enumerate(target_frames):
@@ -466,133 +556,137 @@ class SAM2VideoService:
             h, w = img.shape[:2]
             curr_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-            dx, dy = 0.0, 0.0
-            if prev_gray is not None and len(current_pts) >= 3:
-                try:
-                    p0 = current_pts.reshape(-1, 1, 2)
-                    p1, st, _ = cv2.calcOpticalFlowPyrLK(
-                        prev_gray, curr_gray, p0, None, winSize=(21, 21), maxLevel=3
-                    )
-                    valid = (st.flatten() == 1)
-                    if np.sum(valid) >= 3:
-                        shifts = (p1[valid] - p0[valid]).reshape(-1, 2)
-                        dx = float(np.median(shifts[:, 0]))
-                        dy = float(np.median(shifts[:, 1]))
-                        dx = max(-w * 0.20, min(w * 0.20, dx))
-                        dy = max(-h * 0.20, min(h * 0.20, dy))
-                except Exception as e:
-                    logger.debug("Optical flow tracking step %d: %s", step, e)
-                    dx, dy = 0.0, 0.0
+            for state in obj_states:
+                anno = state["orig_anno"]
+                current_pts = state["current_pts"]
+                current_box = state["current_box"]
+                current_centroid = state["current_centroid"]
 
-            x1, y1, x2, y2 = current_box
-            if box_padding_ratio > 0.0:
-                bw = max(1.0, x2 - x1)
-                bh = max(1.0, y2 - y1)
-                pad_x = bw * box_padding_ratio
-                pad_y = bh * box_padding_ratio
-                prompt_box = (
-                    max(0.0, x1 + dx - pad_x),
-                    max(0.0, y1 + dy - pad_y),
-                    min(float(w), x2 + dx + pad_x),
-                    min(float(h), y2 + dy + pad_y),
-                )
-            else:
-                prompt_box = (
-                    max(0.0, x1 + dx),
-                    max(0.0, y1 + dy),
-                    min(float(w), x2 + dx),
-                    min(float(h), y2 + dy),
-                )
+                dx, dy = 0.0, 0.0
+                if prev_gray is not None and len(current_pts) >= 3:
+                    try:
+                        p0 = current_pts.reshape(-1, 1, 2)
+                        p1, st, _ = cv2.calcOpticalFlowPyrLK(
+                            prev_gray, curr_gray, p0, None, winSize=(21, 21), maxLevel=3
+                        )
+                        valid = (st.flatten() == 1)
+                        if np.sum(valid) >= 3:
+                            shifts = (p1[valid] - p0[valid]).reshape(-1, 2)
+                            dx = float(np.median(shifts[:, 0]))
+                            dy = float(np.median(shifts[:, 1]))
+                            dx = max(-w * 0.20, min(w * 0.20, dx))
+                            dy = max(-h * 0.20, min(h * 0.20, dy))
+                    except Exception as e:
+                        logger.debug("Optical flow tracking step %d: %s", step, e)
+                        dx, dy = 0.0, 0.0
 
-            shifted_centroid = (
-                max(0.0, min(float(w), current_centroid[0] + dx)),
-                max(0.0, min(float(h), current_centroid[1] + dy)),
-            )
-
-            mask = None
-            conf = None
-
-            if prompt_type == "box":
-                if hasattr(self.adapter, "segment_with_box_and_points"):
-                    mask, conf = self.adapter.segment_with_box_and_points(
-                        img, prompt_box, positive_points=[shifted_centroid]
-                    )
-                if mask is None or np.count_nonzero(mask) == 0:
-                    mask, conf = self.adapter.segment_with_box(img, prompt_box)
-                if mask is None or np.count_nonzero(mask) == 0:
-                    mask, conf = self.adapter.segment_with_points(img, [shifted_centroid])
-            elif prompt_type == "point":
-                mask, conf = self.adapter.segment_with_points(img, [shifted_centroid])
-                if mask is None or np.count_nonzero(mask) == 0:
-                    mask, conf = self.adapter.segment_with_box(img, prompt_box)
-            else:  # "combined"
-                if hasattr(self.adapter, "segment_with_box_and_points"):
-                    mask, conf = self.adapter.segment_with_box_and_points(
-                        img, prompt_box, positive_points=[shifted_centroid]
+                x1, y1, x2, y2 = current_box
+                if box_padding_ratio > 0.0:
+                    bw = max(1.0, x2 - x1)
+                    bh = max(1.0, y2 - y1)
+                    pad_x = bw * box_padding_ratio
+                    pad_y = bh * box_padding_ratio
+                    prompt_box = (
+                        max(0.0, x1 + dx - pad_x),
+                        max(0.0, y1 + dy - pad_y),
+                        min(float(w), x2 + dx + pad_x),
+                        min(float(h), y2 + dy + pad_y),
                     )
                 else:
-                    mask, conf = self.adapter.segment_with_box(img, prompt_box)
-                if mask is None or np.count_nonzero(mask) == 0:
-                    mask, conf = self.adapter.segment_with_points(img, [shifted_centroid])
+                    prompt_box = (
+                        max(0.0, x1 + dx),
+                        max(0.0, y1 + dy),
+                        min(float(w), x2 + dx),
+                        min(float(h), y2 + dy),
+                    )
 
-            if mask is None or np.count_nonzero(mask) == 0:
-                logger.warning("Object %s lost on frame %d", initial_annotation.object_id, frame_meta.frame_id)
-                prev_gray = curr_gray
-                continue
-
-            candidate_polys = mask_to_polygons(
-                mask,
-                tolerance_ratio=simplify_tolerance,
-                min_area=min_area,
-                only_largest_contour=False,
-            )
-            if not candidate_polys:
-                prev_gray = curr_gray
-                continue
-
-            best_poly = None
-            best_iou = -1.0
-            for poly in candidate_polys:
-                pb = compute_bounding_box(poly)
-                ix1 = max(prompt_box[0], pb[0])
-                iy1 = max(prompt_box[1], pb[1])
-                ix2 = min(prompt_box[2], pb[2])
-                iy2 = min(prompt_box[3], pb[3])
-                inter_area = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
-                union_area = (
-                    (prompt_box[2] - prompt_box[0]) * (prompt_box[3] - prompt_box[1])
-                    + (pb[2] - pb[0]) * (pb[3] - pb[1])
-                    - inter_area
+                shifted_centroid = (
+                    max(0.0, min(float(w), current_centroid[0] + dx)),
+                    max(0.0, min(float(h), current_centroid[1] + dy)),
                 )
-                iou = inter_area / max(1.0, union_area)
-                if iou > best_iou:
-                    best_iou = iou
-                    best_poly = poly
 
-            if best_poly is None or (best_iou < 0.05 and len(candidate_polys) > 1):
-                logger.warning("Contour rejected due to low overlap (%.2f) on frame %d", best_iou, frame_meta.frame_id)
-                prev_gray = curr_gray
-                continue
+                mask = None
+                conf = None
 
-            new_points = best_poly
-            source_tag = "sam2_box_track" if prompt_type == "box" else ("sam2_point_track" if prompt_type == "point" else "sam2_track")
-            new_anno = PolygonAnnotation(
-                object_id=initial_annotation.object_id,
-                class_id=initial_annotation.class_id,
-                class_name=initial_annotation.class_name,
-                frame_id=frame_meta.frame_id,
-                source_frame_index=frame_meta.source_frame_index,
-                points=new_points,
-                confidence=conf,
-                source=source_tag,
-                tracking_status="tracked",
-            )
-            new_anno.bounding_box = compute_bounding_box(new_points)
-            propagated_annotations.append(new_anno)
+                if prompt_type == "box":
+                    if hasattr(self.adapter, "segment_with_box_and_points"):
+                        mask, conf = self.adapter.segment_with_box_and_points(
+                            img, prompt_box, positive_points=[shifted_centroid]
+                        )
+                    if mask is None or np.count_nonzero(mask) == 0:
+                        mask, conf = self.adapter.segment_with_box(img, prompt_box)
+                    if mask is None or np.count_nonzero(mask) == 0:
+                        mask, conf = self.adapter.segment_with_points(img, [shifted_centroid])
+                elif prompt_type == "point":
+                    mask, conf = self.adapter.segment_with_points(img, [shifted_centroid])
+                    if mask is None or np.count_nonzero(mask) == 0:
+                        mask, conf = self.adapter.segment_with_box(img, prompt_box)
+                else:  # "combined"
+                    if hasattr(self.adapter, "segment_with_box_and_points"):
+                        mask, conf = self.adapter.segment_with_box_and_points(
+                            img, prompt_box, positive_points=[shifted_centroid]
+                        )
+                    else:
+                        mask, conf = self.adapter.segment_with_box(img, prompt_box)
+                    if mask is None or np.count_nonzero(mask) == 0:
+                        mask, conf = self.adapter.segment_with_points(img, [shifted_centroid])
 
-            current_box = new_anno.bounding_box
-            current_pts = np.array(new_points, dtype=np.float32)
-            current_centroid = calculate_polygon_centroid(new_points)
+                if mask is None or np.count_nonzero(mask) == 0:
+                    logger.warning("Object %s lost on frame %d", anno.object_id, frame_meta.frame_id)
+                    continue
+
+                candidate_polys = mask_to_polygons(
+                    mask,
+                    tolerance_ratio=simplify_tolerance,
+                    min_area=min_area,
+                    only_largest_contour=False,
+                )
+                if not candidate_polys:
+                    continue
+
+                best_poly = None
+                best_iou = -1.0
+                for poly in candidate_polys:
+                    pb = compute_bounding_box(poly)
+                    ix1 = max(prompt_box[0], pb[0])
+                    iy1 = max(prompt_box[1], pb[1])
+                    ix2 = min(prompt_box[2], pb[2])
+                    iy2 = min(prompt_box[3], pb[3])
+                    inter_area = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+                    union_area = (
+                        (prompt_box[2] - prompt_box[0]) * (prompt_box[3] - prompt_box[1])
+                        + (pb[2] - pb[0]) * (pb[3] - pb[1])
+                        - inter_area
+                    )
+                    iou = inter_area / max(1.0, union_area)
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_poly = poly
+
+                if best_poly is None or (best_iou < 0.05 and len(candidate_polys) > 1):
+                    logger.warning("Contour rejected due to low overlap (%.2f) on frame %d", best_iou, frame_meta.frame_id)
+                    continue
+
+                new_points = best_poly
+                source_tag = "sam2_box_track" if prompt_type == "box" else ("sam2_point_track" if prompt_type == "point" else "sam2_track")
+                new_anno = PolygonAnnotation(
+                    object_id=anno.object_id,
+                    class_id=anno.class_id,
+                    class_name=anno.class_name,
+                    frame_id=frame_meta.frame_id,
+                    source_frame_index=frame_meta.source_frame_index,
+                    points=new_points,
+                    confidence=conf,
+                    source=source_tag,
+                    tracking_status="tracked",
+                )
+                new_anno.bounding_box = compute_bounding_box(new_points)
+                propagated_annotations.append(new_anno)
+
+                state["current_box"] = new_anno.bounding_box
+                state["current_pts"] = np.array(new_points, dtype=np.float32)
+                state["current_centroid"] = calculate_polygon_centroid(new_points)
+
             prev_gray = curr_gray
 
             if progress_callback:
@@ -600,7 +694,7 @@ class SAM2VideoService:
                 progress_callback(
                     step + 1,
                     total,
-                    f"Propagated object to frame {frame_meta.frame_id} ({step + 1}/{total}) [{pt_label}]",
+                    f"Propagated {len(obj_states)} object(s) to frame {frame_meta.frame_id} ({step + 1}/{total}) [{pt_label}]",
                 )
 
         logger.info("Fallback propagation complete: generated %d annotations", len(propagated_annotations))

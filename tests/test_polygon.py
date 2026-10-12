@@ -106,3 +106,77 @@ def test_annotation_manager_batch_add():
     assert len(mgr.undo_stack) == 1
     assert "Batch add 9 annotations" in mgr.undo_stack[0]["description"]
 
+
+def test_annotation_manager_deduplicates_per_frame():
+    """Verify that adding annotations for an existing object_id updates in-place without duplicates."""
+    from sam2_annotator.annotation.annotation_manager import AnnotationManager
+
+    mgr = AnnotationManager()
+    anno1 = PolygonAnnotation(
+        object_id="car_01",
+        class_id=0,
+        class_name="car",
+        frame_id=2,
+        source_frame_index=1,
+        points=[(10.0, 10.0), (50.0, 10.0), (50.0, 50.0), (10.0, 50.0)],
+    )
+    anno2 = PolygonAnnotation(
+        object_id="car_01",
+        class_id=0,
+        class_name="car",
+        frame_id=2,
+        source_frame_index=1,
+        points=[(15.0, 15.0), (55.0, 15.0), (55.0, 55.0), (15.0, 55.0)],
+    )
+
+    # Adding anno1, then adding updated anno2 for the same object_id on frame 2
+    mgr.add_annotation(anno1)
+    assert len(mgr.get_annotations_for_frame(2)) == 1
+    assert mgr.total_annotations_count() == 1
+
+    mgr.add_annotation(anno2)
+    assert len(mgr.get_annotations_for_frame(2)) == 1
+    assert mgr.total_annotations_count() == 1
+    # Verify geometry was updated
+    assert mgr.get_annotations_for_frame(2)[0].points[0] == (15.0, 15.0)
+
+    # Batch add with repeated object_id should also update in place
+    mgr.add_annotations([anno1, anno2])
+    assert len(mgr.get_annotations_for_frame(2)) == 1
+    assert mgr.total_annotations_count() == 1
+
+
+def test_annotation_manager_multiple_objects_of_same_class():
+    """Verify that multiple distinct objects of the SAME class can be added to the same frame."""
+    from sam2_annotator.annotation.annotation_manager import AnnotationManager
+
+    mgr = AnnotationManager()
+    lamp1 = PolygonAnnotation(
+        object_id="lamp_01",
+        class_id=0,
+        class_name="tower_lamp",
+        frame_id=1,
+        source_frame_index=0,
+        points=[(10.0, 10.0), (30.0, 10.0), (30.0, 40.0), (10.0, 40.0)],
+    )
+    lamp2 = PolygonAnnotation(
+        object_id="lamp_02",
+        class_id=0,
+        class_name="tower_lamp",
+        frame_id=1,
+        source_frame_index=0,
+        points=[(60.0, 10.0), (80.0, 10.0), (80.0, 40.0), (60.0, 40.0)],
+    )
+
+    mgr.add_annotation(lamp1)
+    assert len(mgr.get_annotations_for_frame(1)) == 1
+
+    mgr.add_annotation(lamp2)
+    annos = mgr.get_annotations_for_frame(1)
+    assert len(annos) == 2
+    assert mgr.total_annotations_count() == 2
+    assert {a.object_id for a in annos} == {"lamp_01", "lamp_02"}
+    assert all(a.class_name == "tower_lamp" for a in annos)
+
+
+

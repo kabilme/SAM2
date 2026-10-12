@@ -59,6 +59,21 @@ class PropertiesPanel(QWidget):
         prop_vlayout.setContentsMargins(8, 8, 8, 8)
         prop_vlayout.setSpacing(6)
 
+        # Target selector (All Objects in Frame vs Selected Object Only)
+        target_layout = QHBoxLayout()
+        target_label = QLabel("Target:")
+        target_label.setStyleSheet("color: #aaaaaa; font-weight: bold; font-size: 11px;")
+        self.prop_target_combo = QComboBox()
+        self.prop_target_combo.addItems([
+            "All Objects in Frame",
+            "Selected Object Only",
+        ])
+        self.prop_target_combo.setToolTip("Target object(s) in active keyframe to track and propagate forward")
+        self.prop_target_combo.currentIndexChanged.connect(self._on_prop_target_changed)
+        target_layout.addWidget(target_label)
+        target_layout.addWidget(self.prop_target_combo, 1)
+        prop_vlayout.addLayout(target_layout)
+
         # Scope selector
         mode_layout = QHBoxLayout()
         mode_label = QLabel("Scope:")
@@ -144,8 +159,27 @@ class PropertiesPanel(QWidget):
 
     def set_annotations(self, annotations: List[PolygonAnnotation], selected_id: Optional[str] = None) -> None:
         """Update table items with annotations for the active frame."""
+        # Deduplicate by object_id to ensure the same object is never listed more than once
+        unique_annos = []
+        seen = set()
+        for a in annotations:
+            if a.object_id not in seen:
+                seen.add(a.object_id)
+                unique_annos.append(a)
+        annotations = unique_annos
+
         self.annotations = annotations
         self.selected_object_id = selected_id
+
+        num_objs = len(annotations)
+        self.prop_target_combo.blockSignals(True)
+        if num_objs > 0:
+            self.prop_target_combo.setItemText(0, f"All Objects in Frame ({num_objs})")
+            self.prop_target_combo.setEnabled(True)
+        else:
+            self.prop_target_combo.setItemText(0, "All Objects in Frame (0)")
+            self.prop_target_combo.setEnabled(False)
+        self.prop_target_combo.blockSignals(False)
 
         self.table.blockSignals(True)
         self.table.setRowCount(len(annotations))
@@ -199,23 +233,62 @@ class PropertiesPanel(QWidget):
     def _update_details(self) -> None:
         anno = next((a for a in self.annotations if a.object_id == self.selected_object_id), None)
         if not anno:
-            self.details_label.setText("No object selected.")
+            if len(self.annotations) > 1:
+                self.details_label.setText(f"Active frame contains {len(self.annotations)} objects.")
+            elif len(self.annotations) == 1:
+                self.details_label.setText("1 object in frame. Select to inspect details.")
+            else:
+                self.details_label.setText("No object selected.")
             self.delete_btn.setEnabled(False)
+        else:
+            self.delete_btn.setEnabled(True)
+            conf_str = f"{anno.confidence * 100:.1f}%" if anno.confidence is not None else "N/A"
+            txt = (
+                f"<b>Object:</b> {anno.object_id}<br>"
+                f"<b>Class:</b> {anno.class_name} (ID: {anno.class_id})<br>"
+                f"<b>Vertices:</b> {len(anno.points)} | <b>Area:</b> {anno.area:.0f} px<br>"
+                f"<b>Confidence:</b> {conf_str} | <b>Status:</b> {anno.tracking_status}<br>"
+                f"<b>Source:</b> {anno.source}"
+            )
+            self.details_label.setText(txt)
+
+        self._update_propagate_button_state()
+
+    def _update_propagate_button_state(self) -> None:
+        num_objs = len(self.annotations)
+        target_mode = self.propagation_target
+
+        if num_objs == 0:
             self.propagate_btn.setEnabled(False)
+            self.propagate_btn.setToolTip("No objects in current frame to propagate")
             return
 
-        self.delete_btn.setEnabled(True)
-        self.propagate_btn.setEnabled(True)
+        if target_mode == "selected":
+            can_prop = self.selected_object_id is not None
+            self.propagate_btn.setEnabled(can_prop)
+            target_desc = f"selected object #{self.selected_object_id[:8]}" if self.selected_object_id else "selected object"
+        else:
+            # target_mode == "all"
+            self.propagate_btn.setEnabled(True)
+            target_desc = f"all {num_objs} object{'s' if num_objs > 1 else ''}"
 
-        conf_str = f"{anno.confidence * 100:.1f}%" if anno.confidence is not None else "N/A"
-        txt = (
-            f"<b>Object:</b> {anno.object_id}<br>"
-            f"<b>Class:</b> {anno.class_name} (ID: {anno.class_id})<br>"
-            f"<b>Vertices:</b> {len(anno.points)} | <b>Area:</b> {anno.area:.0f} px<br>"
-            f"<b>Confidence:</b> {conf_str} | <b>Status:</b> {anno.tracking_status}<br>"
-            f"<b>Source:</b> {anno.source}"
-        )
-        self.details_label.setText(txt)
+        mode_idx = self.prop_mode_combo.currentIndex()
+        if mode_idx == 1:
+            self.propagate_btn.setToolTip(f"Propagate {target_desc} forward until the next reference keyframe")
+        elif mode_idx == 2:
+            self.propagate_btn.setToolTip(f"Propagate {target_desc} forward through all remaining video frames")
+        else:
+            self.propagate_btn.setToolTip(f"Propagate {target_desc} forward by {self.prop_frames_spin.value()} frames")
+
+    def _on_prop_target_changed(self, index: int) -> None:
+        self._update_propagate_button_state()
+
+    @property
+    def propagation_target(self) -> str:
+        """Return 'selected' if only selected object is targeted, else 'all'."""
+        if self.prop_target_combo.currentIndex() == 1:
+            return "selected"
+        return "all"
 
     @property
     def propagation_mode(self) -> str:
@@ -264,19 +337,25 @@ class PropertiesPanel(QWidget):
         is_fixed = (index == 0)
         self.count_container.setEnabled(is_fixed)
         self.preset_container.setEnabled(is_fixed)
-        if index == 1:
-            self.propagate_btn.setToolTip("Propagate selected object forward until the next reference keyframe")
-        elif index == 2:
-            self.propagate_btn.setToolTip("Propagate selected object forward through all remaining video frames")
-        else:
-            self.propagate_btn.setToolTip(f"Propagate selected object forward by {self.prop_frames_spin.value()} frames")
+        self._update_propagate_button_state()
 
     def _on_propagate_clicked(self) -> None:
-        if self.selected_object_id:
-            count = self.prop_frames_spin.value()
-            mode = self.propagation_mode
-            prompt_type = self.propagation_prompt_type
-            self.propagate_requested.emit(self.selected_object_id, count, mode, prompt_type)
+        if not self.annotations:
+            return
+
+        # If multiple objects exist and target is "All Objects in Frame" (index 0)
+        # or if no specific object is selected, emit "all":
+        if len(self.annotations) > 1 and self.prop_target_combo.currentIndex() == 0:
+            target_id = "all"
+        elif self.prop_target_combo.currentIndex() == 0 and not self.selected_object_id:
+            target_id = "all"
+        else:
+            target_id = self.selected_object_id if self.selected_object_id else "all"
+
+        count = self.prop_frames_spin.value()
+        mode = self.propagation_mode
+        prompt_type = self.propagation_prompt_type
+        self.propagate_requested.emit(target_id, count, mode, prompt_type)
 
     def _on_delete_clicked(self) -> None:
         if self.selected_object_id:

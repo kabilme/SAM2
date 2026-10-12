@@ -195,6 +195,9 @@ class ProjectManager:
                     )
                     if annos:
                         annotation_manager.frame_annotations[frame.frame_id] = annos
+                deduped = annotation_manager.deduplicate_all_frames()
+                if deduped > 0:
+                    logger.info("Auto-deduplicated %d overlapping duplicate annotations upon loading project", deduped)
 
             self.is_dirty = False
             logger.info("Loaded project '%s' with %d frames, %d classes",
