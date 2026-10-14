@@ -64,7 +64,7 @@ Annotations can be propagated forward across subsequent video frames using Meta'
   6. **MOT / MOTChallenge Tracking** (`gt.txt` + `seqinfo.ini` + `img1/` sequence structure with persistent object tracking IDs)
   7. **Rendered Video Overlays** (`.mp4` video with alpha-blended polygon fills, crisp outlines, bounding boxes, labels, and tracking badges)
 - **Automated Dataset Validator**: Verifies image-label coordinate normalization, bounding ranges $[0.0, 1.0]$, minimum vertex counts, non-empty classes, and `data.yaml` validity.
-- **In-App Deep Learning Model Training Studio**: Train YOLOv8 / YOLO11 instance segmentation and object detection models directly from project annotations (**Dataset > Train Model...** / `Ctrl+T`) with live loss/mAP charts and one-click ONNX export.
+- **In-App Deep Learning Model Training Studio**: Train Ultralytics YOLOv8/11, TorchVision Mask R-CNN & Faster R-CNN (BSD-3 permissive), and Meta SAM 2.1 Mask Decoder (domain adaptation) directly from project annotations (**Dataset > Train Model...** / `Ctrl+T`) with live telemetry charts and one-click ONNX export.
 - **Safe Persistence**: Atomic JSON file writes with automatic backup restoration (`project.backup.json`) to guarantee zero data loss.
 
 ---

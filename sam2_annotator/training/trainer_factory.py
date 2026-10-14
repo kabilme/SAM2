@@ -4,6 +4,8 @@ from typing import Dict, Any, List, Type, Optional
 
 from sam2_annotator.training.base_trainer import BaseModelTrainer, TrainingConfig
 from sam2_annotator.training.yolo_trainer import YOLOTrainer
+from sam2_annotator.training.torchvision_trainer import TorchVisionTrainer
+from sam2_annotator.training.sam2_decoder_trainer import SAM2DecoderTrainer
 
 
 TRAINING_ENGINES: Dict[str, Dict[str, Any]] = {
@@ -33,28 +35,31 @@ TRAINING_ENGINES: Dict[str, Dict[str, Any]] = {
     "maskrcnn": {
         "name": "🔬 TorchVision Mask R-CNN (Pure PyTorch Baseline)",
         "description": "Permissive BSD-3-Clause standard PyTorch baseline with ResNet-50 FPN backbone.",
-        "class": None,  # Phase 3
-        "is_available": False,
+        "class": TorchVisionTrainer,
+        "is_available": True,
         "tasks": ["segmentation", "detection"],
         "default_models": {
             "segmentation": [
-                {"id": "maskrcnn_resnet50_fpn_v2", "name": "Mask R-CNN ResNet-50 FPN V2"},
+                {"id": "maskrcnn_resnet50_fpn_v2", "name": "Mask R-CNN ResNet-50 FPN V2 (High Accuracy)"},
+                {"id": "maskrcnn_resnet50_fpn", "name": "Mask R-CNN ResNet-50 FPN (Classic)"},
             ],
             "detection": [
                 {"id": "fasterrcnn_resnet50_fpn_v2", "name": "Faster R-CNN ResNet-50 FPN V2"},
+                {"id": "fasterrcnn_mobilenet_v3_large_fpn", "name": "Faster R-CNN MobileNetV3 (Lightweight)"},
             ],
         },
     },
     "sam2_decoder": {
         "name": "🎯 Meta SAM 2.1 Mask Decoder (Domain Adaptation)",
         "description": "Fine-tunes SAM 2 prompt & mask decoder on annotated keyframes for enhanced video propagation.",
-        "class": None,  # Phase 4
-        "is_available": False,
+        "class": SAM2DecoderTrainer,
+        "is_available": True,
         "tasks": ["segmentation"],
         "default_models": {
             "segmentation": [
-                {"id": "sam2.1_hiera_tiny.pt", "name": "SAM 2.1 Hiera Tiny (Current In-App Model)"},
+                {"id": "sam2.1_hiera_tiny.pt", "name": "SAM 2.1 Hiera Tiny (In-App Backbone)"},
                 {"id": "sam2.1_hiera_small.pt", "name": "SAM 2.1 Hiera Small"},
+                {"id": "sam2.1_hiera_base_plus.pt", "name": "SAM 2.1 Hiera Base+"},
             ],
         },
     },

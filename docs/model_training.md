@@ -22,20 +22,39 @@ The SAM 2 Video Polygon Annotator includes an integrated **Training Studio** all
 
 ---
 
-## 2. Supported Engines & Roadmap
+## 2. Supported Engines & Training Modes
 
 | Engine | Task | Backend | Status |
 | :--- | :--- | :--- | :--- |
 | **⚡ Ultralytics YOLO** | Instance Segmentation & Detection | `ultralytics` (YOLOv8, YOLO11) | **Available (Phase 1 & 2)** |
-| **🔬 TorchVision Mask R-CNN** | Instance Segmentation & Detection | Native PyTorch & Torchvision | *Phase 3 (Next)* |
-| **🎯 Meta SAM 2.1 Fine-Tuner** | Video Tracking Domain Adaptation | Meta SAM 2.1 Mask Decoder | *Phase 4 (Next)* |
+| **🔬 TorchVision Mask R-CNN** | Instance Segmentation & Detection | Native PyTorch & Torchvision (BSD-3) | **Available (Phase 3)** |
+| **🎯 Meta SAM 2.1 Fine-Tuner** | Video Tracking Domain Adaptation | Meta SAM 2.1 Mask Decoder | **Available (Phase 4)** |
+
+---
+
+### Engine 1: Ultralytics YOLO (Production Edge Models)
+- **Architectures:** YOLO11 / YOLOv8 (Nano, Small, Medium, Large)
+- **Features:** High-speed inference, automatic hyperparameter scheduling, live batch loss telemetry, and one-click ONNX export.
+- **Output:** `best.pt`, `last.pt`, `best.onnx`.
+
+### Engine 2: TorchVision Mask R-CNN & Faster R-CNN (Permissive PyTorch Baseline)
+- **Architectures:** `maskrcnn_resnet50_fpn_v2`, `fasterrcnn_resnet50_fpn_v2`, `fasterrcnn_mobilenet_v3_large_fpn`.
+- **License:** Pure PyTorch BSD-3-Clause license for unrestricted enterprise and commercial distribution without AGPL copyleft requirements.
+- **Dataset:** Formatted as standard COCO 1.0 JSON instances (`instances_train.json` / `instances_val.json`).
+- **Output:** `best.pth`, `last.pth`, `best.onnx`.
+
+### Engine 3: Meta SAM 2.1 Mask Decoder (Domain Adaptation)
+- **Purpose:** Specializes Meta SAM 2.1 for your custom object textures and geometries to boost video propagation tracking accuracy.
+- **Architecture:** Keeps the heavy Hiera image backbone frozen while fine-tuning the prompt encoder and lightweight mask decoder via combined Binary Cross-Entropy and Soft Dice loss.
+- **Output:** `best_decoder.pt` / `last_decoder.pt` compatible directly with the in-app SAM 2 video predictor.
 
 ---
 
 ## 3. Training Architecture & Non-Blocking GUI
 
 The training system is designed with a non-blocking `QThread` architecture:
-- `BaseModelTrainer` defines a unified interface for dataset formatting, training, and model export.
+- `BaseModelTrainer` defines a unified interface for dataset formatting, training, and model export across all engines.
 - `TrainingWorker` runs training in the background while streaming progress signals to the UI thread.
 - `LossChartWidget` draws smooth antialiased loss and mAP curves directly via `QPainter` without heavy extra plotting dependencies.
-- Cooperative cancellation safely saves the latest checkpoint (`last.pt`) if the user stops training prematurely.
+- Automatic checkpointing and cooperative cancellation safely preserve trained weights if stopped prematurely.
+

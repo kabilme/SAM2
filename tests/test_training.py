@@ -24,6 +24,8 @@ from sam2_annotator.training.trainer_factory import (
     create_trainer,
 )
 from sam2_annotator.training.yolo_trainer import YOLOTrainer
+from sam2_annotator.training.torchvision_trainer import TorchVisionTrainer, TorchVisionDetectionDataset
+from sam2_annotator.training.sam2_decoder_trainer import SAM2DecoderTrainer
 from sam2_annotator.training.training_worker import TrainingWorker
 from sam2_annotator.ui.training_dialog import LossChartWidget
 
@@ -61,7 +63,7 @@ def test_training_metrics_to_dict():
 
 
 def test_trainer_factory_engines():
-    """Verify trainer factory registry and engine instantiation."""
+    """Verify trainer factory registry and engine instantiation for all 3 phases."""
     engines = get_available_engines()
     engine_ids = [e["id"] for e in engines]
     assert "yolo" in engine_ids
@@ -69,17 +71,20 @@ def test_trainer_factory_engines():
     assert "sam2_decoder" in engine_ids
 
     # YOLO is available
-    yolo_cfg = TrainingConfig(engine_id="yolo")
-    trainer = create_trainer(yolo_cfg)
-    assert isinstance(trainer, YOLOTrainer)
+    yolo_trainer = create_trainer(TrainingConfig(engine_id="yolo"))
+    assert isinstance(yolo_trainer, YOLOTrainer)
+
+    # TorchVision Mask R-CNN is available (Phase 3)
+    tv_trainer = create_trainer(TrainingConfig(engine_id="maskrcnn"))
+    assert isinstance(tv_trainer, TorchVisionTrainer)
+
+    # SAM 2 Decoder is available (Phase 4)
+    sam2_trainer = create_trainer(TrainingConfig(engine_id="sam2_decoder"))
+    assert isinstance(sam2_trainer, SAM2DecoderTrainer)
 
     # Unknown engine raises ValueError
     with pytest.raises(ValueError):
         create_trainer(TrainingConfig(engine_id="unknown_engine"))
-
-    # Unimplemented engine raises NotImplementedError
-    with pytest.raises(NotImplementedError):
-        create_trainer(TrainingConfig(engine_id="maskrcnn"))
 
 
 def test_yolo_trainer_device_resolution():
@@ -293,5 +298,78 @@ def test_yolo_loss_parsing():
     assert pytest.approx(parsed["box_loss"], 0.001) == 0.75
     assert pytest.approx(parsed["cls_loss"], 0.001) == 1.25
     assert pytest.approx(parsed["seg_loss"], 0.001) == 0.50
+
+
+def test_torchvision_trainer_build_model():
+    """Verify TorchVision model architecture creation and head replacement (Phase 3)."""
+    # 1. Faster R-CNN detection model
+    det_cfg = TrainingConfig(
+        engine_id="maskrcnn",
+        model_name="fasterrcnn_resnet50_fpn_v2",
+        task="detection",
+    )
+    det_trainer = TorchVisionTrainer(det_cfg)
+    det_model = det_trainer._build_model(num_classes=5)
+    assert det_model.roi_heads.box_predictor.cls_score.out_features == 5
+
+    # 2. Mask R-CNN segmentation model
+    seg_cfg = TrainingConfig(
+        engine_id="maskrcnn",
+        model_name="maskrcnn_resnet50_fpn_v2",
+        task="segmentation",
+    )
+    seg_trainer = TorchVisionTrainer(seg_cfg)
+    seg_model = seg_trainer._build_model(num_classes=4)
+    assert seg_model.roi_heads.box_predictor.cls_score.out_features == 4
+    assert seg_model.roi_heads.mask_predictor.mask_fcn_logits.out_channels == 4
+
+
+def test_sam2_decoder_trainer_manifest(tmp_path):
+    """Verify SAM 2 Decoder Trainer dataset manifest generation (Phase 4)."""
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
+    cv2.imwrite(str(frames_dir / "frame_0001.jpg"), dummy_img)
+
+    frames = [
+        FrameMetadata(frame_id=1, filename="frame_0001.jpg", source_frame_index=0, timestamp_seconds=0.0, width=100, height=100),
+    ]
+    classes = [ClassItem(id=0, name="scooter", color_rgb=[255, 0, 0])]
+
+    class DummyProjMgr:
+        def __init__(self):
+            self.frames = frames
+            self.classes = classes
+            self.frames_dir = frames_dir
+
+    proj_mgr = DummyProjMgr()
+    anno_mgr = AnnotationManager()
+    anno = PolygonAnnotation(
+        object_id="obj_1",
+        class_id=0,
+        class_name="scooter",
+        frame_id=1,
+        source_frame_index=0,
+        points=[(10.0, 10.0), (40.0, 10.0), (40.0, 40.0), (10.0, 40.0)],
+        bounding_box=(10.0, 10.0, 40.0, 40.0),
+    )
+    anno_mgr.add_annotation(anno)
+
+    cfg = TrainingConfig(
+        engine_id="sam2_decoder",
+        output_dir=tmp_path / "sam2_run",
+        train_ratio=1.0,
+        val_ratio=0.0,
+    )
+    trainer = SAM2DecoderTrainer(cfg)
+    manifest_path = trainer.prepare_dataset(proj_mgr, anno_mgr)
+
+    assert manifest_path.exists()
+    import json
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    assert len(data["train"]) == 1
+    assert data["train"][0]["annotations"][0]["class_name"] == "scooter"
+
 
 
