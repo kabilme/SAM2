@@ -26,9 +26,10 @@ The SAM 2 Video Polygon Annotator includes an integrated **Training Studio** all
 
 | Engine | Task | Backend | Status |
 | :--- | :--- | :--- | :--- |
-| **⚡ Ultralytics YOLO** | Instance Segmentation & Detection | `ultralytics` (YOLOv8, YOLO11) | **Available (Phase 1 & 2)** |
-| **🔬 TorchVision Mask R-CNN** | Instance Segmentation & Detection | Native PyTorch & Torchvision (BSD-3) | **Available (Phase 3)** |
-| **🎯 Meta SAM 2.1 Fine-Tuner** | Video Tracking Domain Adaptation | Meta SAM 2.1 Mask Decoder | **Available (Phase 4)** |
+| **⚡ Ultralytics YOLO** | Instance Segmentation & Detection | `ultralytics` (YOLOv8, YOLO11) | **Available** |
+| **🦅 Baidu RT-DETR** | NMS-Free Vision Transformer Detection | `ultralytics.RTDETR` | **Available** |
+| **🔬 TorchVision Mask R-CNN** | Instance Segmentation & Detection | Native PyTorch & Torchvision (BSD-3) | **Available** |
+| **🎯 Meta SAM 2.1 Fine-Tuner** | Video Tracking Domain Adaptation | Meta SAM 2.1 Mask Decoder | **Available** |
 
 ---
 
@@ -37,13 +38,18 @@ The SAM 2 Video Polygon Annotator includes an integrated **Training Studio** all
 - **Features:** High-speed inference, automatic hyperparameter scheduling, live batch loss telemetry, and one-click ONNX export.
 - **Output:** `best.pt`, `last.pt`, `best.onnx`.
 
-### Engine 2: TorchVision Mask R-CNN & Faster R-CNN (Permissive PyTorch Baseline)
+### Engine 2: Baidu RT-DETR (Real-Time Detection Transformer)
+- **Architectures:** `rtdetr-l.pt` (Large, ~32M params), `rtdetr-x.pt` (Extra-Large, ~65M params).
+- **Features:** NMS-free end-to-end detection via bipartite Hungarian matching, cross-scale feature interactions, and global self-attention for complex, occluded, or overlapping scenes.
+- **Output:** `best.pt`, `last.pt`, `best.onnx`.
+
+### Engine 3: TorchVision Mask R-CNN & Faster R-CNN (Permissive PyTorch Baseline)
 - **Architectures:** `maskrcnn_resnet50_fpn_v2`, `fasterrcnn_resnet50_fpn_v2`, `fasterrcnn_mobilenet_v3_large_fpn`.
 - **License:** Pure PyTorch BSD-3-Clause license for unrestricted enterprise and commercial distribution without AGPL copyleft requirements.
 - **Dataset:** Formatted as standard COCO 1.0 JSON instances (`instances_train.json` / `instances_val.json`).
 - **Output:** `best.pth`, `last.pth`, `best.onnx`.
 
-### Engine 3: Meta SAM 2.1 Mask Decoder (Domain Adaptation)
+### Engine 4: Meta SAM 2.1 Mask Decoder (Domain Adaptation)
 - **Purpose:** Specializes Meta SAM 2.1 for your custom object textures and geometries to boost video propagation tracking accuracy.
 - **Architecture:** Keeps the heavy Hiera image backbone frozen while fine-tuning the prompt encoder and lightweight mask decoder via combined Binary Cross-Entropy and Soft Dice loss.
 - **Output:** `best_decoder.pt` / `last_decoder.pt` compatible directly with the in-app SAM 2 video predictor.

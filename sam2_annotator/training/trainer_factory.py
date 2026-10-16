@@ -6,6 +6,7 @@ from sam2_annotator.training.base_trainer import BaseModelTrainer, TrainingConfi
 from sam2_annotator.training.yolo_trainer import YOLOTrainer
 from sam2_annotator.training.torchvision_trainer import TorchVisionTrainer
 from sam2_annotator.training.sam2_decoder_trainer import SAM2DecoderTrainer
+from sam2_annotator.training.rtdetr_trainer import RTDETRTrainer
 
 
 TRAINING_ENGINES: Dict[str, Dict[str, Any]] = {
@@ -60,6 +61,19 @@ TRAINING_ENGINES: Dict[str, Dict[str, Any]] = {
                 {"id": "sam2.1_hiera_tiny.pt", "name": "SAM 2.1 Hiera Tiny (In-App Backbone)"},
                 {"id": "sam2.1_hiera_small.pt", "name": "SAM 2.1 Hiera Small"},
                 {"id": "sam2.1_hiera_base_plus.pt", "name": "SAM 2.1 Hiera Base+"},
+            ],
+        },
+    },
+    "rtdetr": {
+        "name": "🦅 Baidu RT-DETR (Real-Time Detection Transformer)",
+        "description": "NMS-free end-to-end vision transformer object detector with high accuracy on occluded and crowded scenes.",
+        "class": RTDETRTrainer,
+        "is_available": True,
+        "tasks": ["detection"],
+        "default_models": {
+            "detection": [
+                {"id": "rtdetr-l.pt", "name": "RT-DETR Large (~32M params, 64MB)"},
+                {"id": "rtdetr-x.pt", "name": "RT-DETR Extra-Large (~65M params, 134MB)"},
             ],
         },
     },

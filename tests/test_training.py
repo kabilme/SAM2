@@ -26,6 +26,7 @@ from sam2_annotator.training.trainer_factory import (
 from sam2_annotator.training.yolo_trainer import YOLOTrainer
 from sam2_annotator.training.torchvision_trainer import TorchVisionTrainer, TorchVisionDetectionDataset
 from sam2_annotator.training.sam2_decoder_trainer import SAM2DecoderTrainer
+from sam2_annotator.training.rtdetr_trainer import RTDETRTrainer
 from sam2_annotator.training.training_worker import TrainingWorker
 from sam2_annotator.ui.training_dialog import LossChartWidget
 
@@ -69,6 +70,7 @@ def test_trainer_factory_engines():
     assert "yolo" in engine_ids
     assert "maskrcnn" in engine_ids
     assert "sam2_decoder" in engine_ids
+    assert "rtdetr" in engine_ids
 
     # YOLO is available
     yolo_trainer = create_trainer(TrainingConfig(engine_id="yolo"))
@@ -81,6 +83,11 @@ def test_trainer_factory_engines():
     # SAM 2 Decoder is available (Phase 4)
     sam2_trainer = create_trainer(TrainingConfig(engine_id="sam2_decoder"))
     assert isinstance(sam2_trainer, SAM2DecoderTrainer)
+
+    # RT-DETR Transformer is available
+    rtdetr_trainer = create_trainer(TrainingConfig(engine_id="rtdetr"))
+    assert isinstance(rtdetr_trainer, RTDETRTrainer)
+    assert rtdetr_trainer.config.task == "detection"
 
     # Unknown engine raises ValueError
     with pytest.raises(ValueError):
@@ -370,6 +377,81 @@ def test_sam2_decoder_trainer_manifest(tmp_path):
         data = json.load(f)
     assert len(data["train"]) == 1
     assert data["train"][0]["annotations"][0]["class_name"] == "scooter"
+
+
+def test_rtdetr_trainer_configuration(tmp_path):
+    """Verify RTDETRTrainer enforces detection task and defaults."""
+    cfg = TrainingConfig(
+        engine_id="rtdetr",
+        model_name="rtdetr-l.pt",
+        task="segmentation",  # Requesting segmentation should be auto-enforced to detection
+        output_dir=tmp_path / "rtdetr_test",
+    )
+    trainer = RTDETRTrainer(cfg)
+    assert trainer.config.task == "detection"
+    assert trainer.config.model_name == "rtdetr-l.pt"
+
+    # Default model fallback if empty
+    cfg_empty = TrainingConfig(
+        engine_id="rtdetr",
+        model_name="",
+        output_dir=tmp_path / "rtdetr_test2",
+    )
+    trainer_empty = RTDETRTrainer(cfg_empty)
+    assert trainer_empty.config.model_name == "rtdetr-l.pt"
+    assert trainer_empty.config.task == "detection"
+
+
+def test_rtdetr_trainer_dataset_prep(tmp_path):
+    """Verify RTDETRTrainer prepares dataset in YOLO detection format."""
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
+    cv2.imwrite(str(frames_dir / "frame_0001.jpg"), dummy_img)
+
+    frames = [
+        FrameMetadata(frame_id=1, filename="frame_0001.jpg", source_frame_index=0, timestamp_seconds=0.0, width=100, height=100),
+    ]
+    classes = [ClassItem(id=0, name="vehicle", color_rgb=[0, 255, 0])]
+
+    class DummyProjMgr:
+        def __init__(self):
+            self.frames = frames
+            self.classes = classes
+            self.frames_dir = frames_dir
+
+    proj_mgr = DummyProjMgr()
+    anno_mgr = AnnotationManager()
+    anno = PolygonAnnotation(
+        object_id="obj_v1",
+        class_id=0,
+        class_name="vehicle",
+        frame_id=1,
+        source_frame_index=0,
+        points=[(20.0, 20.0), (60.0, 20.0), (60.0, 60.0), (20.0, 60.0)],
+        bounding_box=(20.0, 20.0, 60.0, 60.0),
+    )
+    anno_mgr.add_annotation(anno)
+
+    cfg = TrainingConfig(
+        engine_id="rtdetr",
+        model_name="rtdetr-l.pt",
+        output_dir=tmp_path / "rtdetr_run",
+        train_ratio=1.0,
+        val_ratio=0.0,
+    )
+    trainer = RTDETRTrainer(cfg)
+    yaml_path = trainer.prepare_dataset(proj_mgr, anno_mgr)
+
+    assert yaml_path.exists()
+    assert yaml_path.name == "data.yaml"
+    # Labels should be exported in detection format (class x_center y_center width height)
+    labels_file = tmp_path / "rtdetr_run" / "dataset" / "labels" / "train" / "frame_0001.txt"
+    assert labels_file.exists()
+    line = labels_file.read_text().strip()
+    parts = line.split()
+    assert len(parts) == 5  # class, x_center, y_center, width, height (detection format)
+    assert parts[0] == "0"
 
 
 
