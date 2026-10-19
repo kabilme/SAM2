@@ -78,10 +78,11 @@ names:
 
 ## 4. Dataset Splitting Strategies
 
-The application provides three splitting strategies:
-1. **Sequential**: Frames are chronologically split (e.g. 70% start = train, 20% middle = val, 10% end = test). Best for video to avoid temporal leakage between consecutive frames.
-2. **Grouped**: Splits continuous frame segments or video chunks into independent sets.
-3. **Random**: Randomly distributes frames into splits according to user-specified ratios.
+The application provides four splitting strategies:
+1. **Per-Video Stratified Split (Recommended for Multi-Video)**: Automatically partitions each individual source video proportionally (e.g. 80% train, 20% val) while preserving sequential temporal continuity within each video. Guarantees that every class video and background video is fairly represented across both training and validation sets without cross-frame leakage.
+2. **Sequential**: Frames are chronologically split across the entire project (e.g. 70% start = train, 20% middle = val, 10% end = test). Best for projects with a single continuous video.
+3. **Grouped**: Splits continuous frame segments into contiguous blocks (e.g. ~10–20 frames) and shuffles those blocks.
+4. **Random**: Randomly distributes individual frames into splits according to user-specified ratios.
 
 ---
 

@@ -231,7 +231,10 @@ class TrainingDialog(QDialog):
         # Hyperparameters Row 3: Split Strategy & Train/Val Split
         config_layout.addWidget(QLabel("Split Strategy:"), 4, 0)
         self.split_combo = QComboBox()
-        self.split_combo.addItems(["Sequential (Prevents Video Leakage)", "Random Split", "Grouped"])
+        self.split_combo.addItem("Per-Video Stratified Split (Multi-Video)", "per_video")
+        self.split_combo.addItem("Sequential (Single Video)", "sequential")
+        self.split_combo.addItem("Random Split (Shuffled)", "random")
+        self.split_combo.addItem("Grouped Blocks", "grouped")
         config_layout.addWidget(self.split_combo, 4, 1)
 
         config_layout.addWidget(QLabel("Train / Val Ratio:"), 4, 2)
@@ -467,8 +470,7 @@ class TrainingDialog(QDialog):
         else:
             t_ratio, v_ratio = 0.8, 0.2
 
-        strategy_idx = self.split_combo.currentIndex()
-        strategy = "sequential" if strategy_idx == 0 else ("random" if strategy_idx == 1 else "grouped")
+        strategy = self.split_combo.currentData() or "per_video"
 
         config = TrainingConfig(
             engine_id=eng_id,

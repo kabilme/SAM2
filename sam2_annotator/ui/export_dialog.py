@@ -93,11 +93,10 @@ class ExportDialog(QDialog):
         split_form.addRow("Test Ratio:", self.test_spin)
 
         self.strategy_combo = QComboBox()
-        self.strategy_combo.addItems([
-            "Sequential (Minimize Video Leakage)",
-            "Grouped Segments",
-            "Random Shuffled"
-        ])
+        self.strategy_combo.addItem("Per-Video Stratified Split (Multi-Video)", "per_video")
+        self.strategy_combo.addItem("Sequential (Minimize Video Leakage)", "sequential")
+        self.strategy_combo.addItem("Grouped Segments", "grouped")
+        self.strategy_combo.addItem("Random Shuffled", "random")
         split_form.addRow("Split Strategy:", self.strategy_combo)
 
         layout.addWidget(self.split_group)
@@ -219,7 +218,7 @@ class ExportDialog(QDialog):
             "train_ratio": self.train_spin.value() / 100.0,
             "val_ratio": self.val_spin.value() / 100.0,
             "test_ratio": self.test_spin.value() / 100.0,
-            "split_strategy": strat_map.get(self.strategy_combo.currentIndex(), "sequential"),
+            "split_strategy": self.strategy_combo.currentData() or "per_video",
             "include_null_frames": self.chk_null_frames.isChecked(),
             "export_masks": self.chk_masks.isChecked(),
             "export_previews": self.chk_previews.isChecked(),

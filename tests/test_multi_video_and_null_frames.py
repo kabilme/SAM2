@@ -229,3 +229,48 @@ def test_dynamic_add_videos_flow():
         assert proj_mgr.frames[3].frame_id == 4
         assert proj_mgr.frames[3].video_name == "additional.mp4"
 
+
+def test_per_video_stratified_split():
+    """Verify Per-Video Stratified Split distributes every video proportionally across splits."""
+    frames = []
+    # 3 distinct videos (e.g. Scooter, TowerLamp, Background) with 10 frames each
+    for v_idx, v_name in enumerate(["scooter_vid.mp4", "towerlamp_vid.mp4", "background_vid.mp4"]):
+        for i in range(10):
+            fid = v_idx * 10 + i + 1
+            frames.append(
+                FrameMetadata(
+                    frame_id=fid,
+                    source_frame_index=i,
+                    timestamp_seconds=float(i),
+                    filename=f"{v_name.split('.')[0]}_frame_{fid:08d}.jpg",
+                    width=640,
+                    height=480,
+                    video_name=v_name,
+                )
+            )
+
+    split = DatasetSplitter.split_frames(
+        frames=frames,
+        train_ratio=0.8,
+        val_ratio=0.2,
+        test_ratio=0.0,
+        strategy="per_video",
+    )
+
+    # Total frames: 30. Each video: 8 train, 2 val.
+    assert len(split["train"]) == 24
+    assert len(split["val"]) == 6
+    assert len(split["test"]) == 0
+
+    # Ensure every single video is represented in both train and val
+    train_videos = {f.video_name for f in split["train"]}
+    val_videos = {f.video_name for f in split["val"]}
+    assert train_videos == {"scooter_vid.mp4", "towerlamp_vid.mp4", "background_vid.mp4"}
+    assert val_videos == {"scooter_vid.mp4", "towerlamp_vid.mp4", "background_vid.mp4"}
+
+    # Ensure sequential integrity within each video (frames 0..7 in train, 8..9 in val)
+    scooter_val = [f for f in split["val"] if f.video_name == "scooter_vid.mp4"]
+    assert len(scooter_val) == 2
+    assert scooter_val[0].source_frame_index == 8
+    assert scooter_val[1].source_frame_index == 9
+

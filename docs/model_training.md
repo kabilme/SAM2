@@ -15,7 +15,7 @@ The SAM 2 Video Polygon Annotator includes an integrated **Training Studio** all
    - **Batch Size:** 8 (default)
    - **Image Size:** 640 (default)
    - **Device:** Auto (detects CUDA GPU acceleration or falls back to CPU)
-   - **Train / Val Split:** 80% / 20% (Sequential split to avoid temporal video leakage)
+   - **Train / Val Split:** 80% / 20% (**Per-Video Stratified Split** for multi-video projects, or Sequential for single video)
 4. Click **🚀 Start Training**.
 5. Watch real-time metrics, live loss curves, and validation mAP in the telemetry dashboard.
 6. When complete, click **📦 Export to ONNX...** to export ready-to-deploy weights.
